@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1>🧪 Séries (BETA)</h1>
+
+<div class="card">
+
+    <!-- Nome + Temporada -->
+    <div class="top-row">
+        <div class="input-group">
+            <label>Nome da Série:</label>
+            <input type="text" id="serieNome" placeholder="Ex: Halo">
+        </div>
+
+        <div class="input-group">
+            <label>Temporada:</label>
+            <input type="number" id="temporada" value="1" min="1">
+        </div>
+    </div>
+
+    <!-- Busca -->
+    <div class="input-group" style="margin-top:15px;">
+        <label>Pesquisar:</label>
+        <input type="text" id="buscarInput" placeholder="Digite para buscar...">
+    </div>
+
+    <!-- Lista -->
+    <div id="resultados" class="lista-resultados"></div>
+
+    <!-- Selecionados -->
+    <div class="input-group" style="margin-top:20px;">
+        <label>Episódios Selecionados:</label>
+        <textarea id="linksSelecionados" readonly></textarea>
+    </div>
+
+    <!-- Botões -->
+    <div style="margin-top:20px;">
+        <button class="btn-primary" onclick="iniciarDownload()">
+            🚀 Iniciar Download
+        </button>
+        <button class="btn-secondary" onclick="limparLinks()">
+            Limpar
+        </button>
+    </div>
+
+</div>
+
+<style>
+
+.top-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.lista-resultados {
+    margin-top: 10px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.result-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #1e293b;
+}
+
+.result-item:hover {
+    background: #1e293b;
+}
+
+textarea {
+    width: 100%;
+    height: 140px;
+    background: #111827;
+    border: 1px solid #334155;
+    color: white;
+    border-radius: 6px;
+    padding: 10px;
+}
+
+.btn-primary {
+    background: #3b82f6;
+    border: none;
+    padding: 8px 15px;
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.btn-secondary {
+    background: #64748b;
+    border: none;
+    padding: 8px 15px;
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-left: 10px;
+}
+
+.btn-primary:hover,
+.btn-secondary:hover {
+    opacity: 0.9;
+}
+
+</style>
+
+<script>
+
+let debounceTimer = null;
+let controller = null;
+
+document.getElementById("buscarInput").addEventListener("input", function() {
+
+    const termo = this.value.trim();
+
+    // limpa resultados se menor que 2 letras
+    if (termo.length < 2) {
+        document.getElementById("resultados").innerHTML = "";
+        return;
+    }
+
+    // 🔥 debounce (espera digitar parar)
+    clearTimeout(debounceTimer);
+
+    debounceTimer = setTimeout(() => {
+
+        // cancela requisição anterior se existir
+        if (controller) {
+            controller.abort();
+        }
+
+        controller = new AbortController();
+
+        fetch("/buscar_series?q=" + encodeURIComponent(termo), {
+            signal: controller.signal
+        })
+        .then(res => res.json())
+        .then(data => {
+
+            const box = document.getElementById("resultados");
+            box.innerHTML = "";
+
+            if (!data.results || data.results.length === 0) {
+                box.innerHTML = "<div style='padding:10px;'>Nenhum resultado encontrado</div>";
+                return;
+            }
+
+            data.results.forEach(item => {
+
+                const div = document.createElement("div");
+                div.className = "result-item";
+                div.innerText = item.name;
+
+                div.onclick = () => adicionarLink(item.name, item.url);
+
+                box.appendChild(div);
+            });
+
+        })
+        .catch(error => {
+            if (error.name !== "AbortError") {
+                console.error("Erro na busca:", error);
+            }
+        });
+
+    }, 300); // tempo de espera (ms)
+
+});
+
+function adicionarLink(nome, url) {
+
+    const textarea = document.getElementById("linksSelecionados");
+
+    if (textarea.value.includes(url)) return;
+
+    textarea.value += `${nome}|${url}\n`;
+}
+
+function limparLinks() {
+    document.getElementById("linksSelecionados").value = "";
+}
+
+function iniciarDownload() {
+
+    const serie = document.getElementById("serieNome").value.trim();
+    const temporada = document.getElementById("temporada").value.trim();
+    const linksRaw = document.getElementById("linksSelecionados").value.trim();
+
+    if (!serie || !temporada || !linksRaw) {
+        alert("Preencha os dados corretamente.");
+        return;
+    }
+
+    const episodios = linksRaw.split("\n").map(linha => {
+        const [nome, url] = linha.split("|");
+        return {
+            name: nome.trim(),
+            url: url.trim()
+        };
+    });
+
+    fetch("/add_serie", {   // 👈 USA A ROTA EXISTENTE
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            name: serie,
+            season: temporada,
+            episodes: episodios
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        alert(data.message);
+        window.location.href = "/downloads";
+    });
+}
+
+</script>
+
+{% endblock %}

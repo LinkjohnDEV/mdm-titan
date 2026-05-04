@@ -1,0 +1,84 @@
+{
+  "tipo": "serie",
+  "nome": "Halo",
+  "temporadas": [
+    {
+      "temporada": "1",
+      "episodios": [
+        {
+          "nome": "Halo S01E01",
+          "url": "http://ph1233.pro:80/series/436008/900382/5941814.mp4"
+        },
+        {
+          "nome": "Halo S01E02",
+          "url": "http://ph1233.pro:80/series/436008/900382/5941815.mp4"
+        },
+        {
+          "nome": "Halo S01E03",
+          "url": "http://ph1233.pro:80/series/436008/900382/5941816.mp4"
+        },
+        {
+          "nome": "Halo S01E04",
+          "url": "http://ph1233.pro:80/series/436008/900382/5941817.mp4"
+        },
+        {
+          "nome": "Halo S01E05",
+          "url": "http://ph1233.pro:80/series/436008/900382/5941818.mp4"
+        },
+        {
+          "nome": "Halo S01E06",
+          "url": "http://ph1233.pro:80/series/436008/900382/5941819.mp4"
+        },
+        {
+          "nome": "Halo S01E07",
+          "url": "http://ph1233.pro:80/series/436008/900382/5941820.mp4"
+        },
+        {
+          "nome": "Halo S01E08",
+          "url": "http://ph1233.pro:80/series/436008/900382/5941821.mp4"
+        },
+        {
+          "nome": "Halo S01E09",
+          "url": "http://ph1233.pro:80/series/436008/900382/5941822.mp4"
+        }
+      ]
+    },
+    {
+      "temporada": "2",
+      "episodios": [
+        {
+          "nome": "Halo S02E01",
+          "url": "http://ph1233.pro:80/series/436008/900382/5941823.mp4"
+        },
+        {
+          "nome": "Halo S02E02",
+          "url": "http://ph1233.pro:80/series/436008/900382/5941824.mp4"
+        },
+        {
+          "nome": "Halo S02E03",
+          "url": "http://ph1233.pro:80/series/436008/900382/5941825.mp4"
+        },
+        {
+          "nome": "Halo S02E04",
+          "url": "http://ph1233.pro:80/series/436008/900382/5941826.mp4"
+        },
+        {
+          "nome": "Halo S02E05",
+          "url": "http://ph1233.pro:80/series/436008/900382/5941827.mp4"
+        },
+        {
+          "nome": "Halo S02E06",
+          "url": "http://ph1233.pro:80/series/436008/900382/5941828.mp4"
+        },
+        {
+          "nome": "Halo S02E07",
+          "url": "http://ph1233.pro:80/series/436008/900382/5941829.mp4"
+        },
+        {
+          "nome": "Halo S02E08",
+          "url": "http://ph1233.pro:80/series/436008/900382/5941830.mp4"
+        }
+      ]
+    }
+  ]
+}

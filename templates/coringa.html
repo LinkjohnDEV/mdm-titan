@@ -1,0 +1,576 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+
+  <!-- Header -->
+  <div class="flex items-center gap-3 mb-2">
+    <i data-lucide="zap" class="w-7 h-7 text-yellow-400"></i>
+    <h1 class="text-2xl font-bold text-white">Coringa Download</h1>
+    <span class="text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full font-semibold">BETA</span>
+  </div>
+  <p class="text-slate-400 text-sm mb-6">Baixe qualquer arquivo para qualquer pasta ou execute um script em lote.</p>
+
+  <!-- Tabs -->
+  <div class="flex gap-2 mb-6 flex-wrap">
+    <button id="tab-btn-coringa" onclick="switchTab('coringa')"
+      class="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-yellow-500 text-black shadow-lg shadow-yellow-500/20">
+      <i data-lucide="zap" class="w-4 h-4"></i> Download Coringa
+    </button>
+    <button id="tab-btn-script" onclick="switchTab('script')"
+      class="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-slate-900/60 border border-slate-700 text-slate-400 hover:border-blue-500 hover:text-blue-400">
+      <i data-lucide="file-code" class="w-4 h-4"></i> Script Runner Séries
+    </button>
+    <button id="tab-btn-filmes" onclick="switchTab('filmes')"
+      class="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-slate-900/60 border border-slate-700 text-slate-400 hover:border-cyan-500 hover:text-cyan-400">
+      <i data-lucide="film" class="w-4 h-4"></i> Script Runner Filmes
+    </button>
+  </div>
+
+  <!-- ===== TAB: CORINGA ===== -->
+  <div id="tab-coringa">
+    <div class="bg-slate-900/60 border border-slate-700/50 rounded-2xl p-6 space-y-6">
+      <div>
+        <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">1 — Pesquisar conteúdo</p>
+        <div class="relative">
+          <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"></i>
+          <input id="searchInput" type="text" placeholder="Ex: Jujutsu Kaisen S01E01, Strange Things..."
+            class="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-yellow-500 transition">
+        </div>
+        <div id="resultados" class="mt-2 rounded-xl border border-slate-700 bg-slate-800/80 hidden max-h-72 overflow-y-auto divide-y divide-slate-700/50"></div>
+      </div>
+      <div id="selecionado" class="hidden">
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-widest">2 — Arquivos selecionados</p>
+          <button onclick="limparSelecao()" class="text-xs text-slate-500 hover:text-red-400 transition flex items-center gap-1"><i data-lucide="trash-2" class="w-3 h-3"></i> limpar tudo</button>
+        </div>
+        <div id="listaItens" class="space-y-2 max-h-56 overflow-y-auto"></div>
+      </div>
+      <div id="stepDestino" class="hidden">
+        <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">3 — Escolher pasta de destino</p>
+        <div id="breadcrumb" class="flex items-center gap-1 text-sm text-slate-400 mb-3 flex-wrap"></div>
+        <div id="pastasLista" class="bg-slate-800 border border-slate-700 rounded-xl divide-y divide-slate-700/50 max-h-56 overflow-y-auto"></div>
+        <div id="destinoAtual" class="mt-3 flex items-center gap-2 text-sm text-slate-300">
+          <i data-lucide="folder-open" class="w-4 h-4 text-yellow-400"></i>
+          <span>Salvar em: <span id="destinoTexto" class="text-yellow-400 font-mono">/mnt/media</span></span>
+        </div>
+      </div>
+      <div id="stepBotao" class="hidden pt-2">
+        <button onclick="iniciarDownload()"
+          class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-black font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all">
+          <i data-lucide="zap" class="w-5 h-5"></i>
+          <span id="btnTexto">INICIAR DOWNLOAD CORINGA</span>
+        </button>
+        <p id="btnSubtitle" class="text-center text-xs text-slate-500 mt-2"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TAB: SCRIPT RUNNER SÉRIES ===== -->
+  <div id="tab-script" class="hidden space-y-6">
+
+    <div class="bg-slate-900/60 border border-slate-700/50 rounded-2xl p-6 space-y-5">
+      <div>
+        <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Cole o script JSON ou faça upload do arquivo</p>
+        <p class="text-xs text-slate-500 mb-4">Tipos: <code class="text-blue-400">serie</code>, <code class="text-blue-400">desenho_serie</code>, <code class="text-blue-400">anime_serie</code></p>
+        <label class="flex items-center gap-3 w-full bg-slate-800 border border-dashed border-slate-600 hover:border-blue-500 rounded-xl px-4 py-3 cursor-pointer transition mb-3 group">
+          <i data-lucide="upload" class="w-5 h-5 text-slate-500 group-hover:text-blue-400 transition"></i>
+          <span class="text-slate-400 text-sm group-hover:text-white transition">Clique para carregar um arquivo <code class="text-blue-400">.json</code></span>
+          <input type="file" id="scriptFile" accept=".json" class="hidden" onchange="carregarArquivo(this)">
+        </label>
+        <textarea id="scriptInput" rows="12" placeholder='{
+  "tipo": "serie",
+  "nome": "Manifest",
+  "temporadas": [
+    {
+      "temporada": "1",
+      "episodios": [
+        { "nome": "S01E01 - Pilot", "url": "http://link.mp4" }
+      ]
+    }
+  ]
+}'
+          class="w-full bg-slate-800 border border-slate-700 rounded-xl p-4 text-white font-mono text-xs resize-none focus:outline-none focus:border-blue-500 transition"></textarea>
+      </div>
+      <div class="flex gap-3">
+        <button onclick="previewScript()"
+          class="flex-1 bg-slate-800 hover:bg-slate-700 border border-blue-500/40 hover:border-blue-500 text-blue-400 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all">
+          <i data-lucide="eye" class="w-5 h-5"></i> PRÉ-VISUALIZAR
+        </button>
+        <button onclick="limparScript()"
+          class="px-5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-red-400 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Preview + Pasta + Executar -->
+    <div id="scriptPreview" class="hidden bg-slate-900/60 border border-slate-700/50 rounded-2xl p-6 space-y-5">
+      <div class="flex items-center justify-between">
+        <h2 class="text-sm font-bold text-white flex items-center gap-2">
+          <i data-lucide="list-checks" class="text-blue-400 w-5 h-5"></i> Resumo do Script
+        </h2>
+        <span id="previewBadge" class="text-xs px-3 py-1 rounded-full font-bold border"></span>
+      </div>
+      <div id="previewContent" class="space-y-3"></div>
+
+      <div class="border-t border-slate-700/50 pt-4">
+        <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+          <i data-lucide="folder-open" class="w-4 h-4 text-blue-400"></i> Pasta de destino base
+        </p>
+        <div id="sc_breadcrumb" class="flex items-center gap-1 text-sm text-slate-400 mb-3 flex-wrap"></div>
+        <div id="sc_pastasLista" class="bg-slate-800 border border-slate-700 rounded-xl divide-y divide-slate-700/50 max-h-48 overflow-y-auto"></div>
+        <div class="mt-3 flex items-center gap-2 text-sm text-slate-300">
+          <i data-lucide="folder-check" class="w-4 h-4 text-blue-400"></i>
+          <span>Baixar em: <span id="sc_destinoTexto" class="text-blue-400 font-mono">/mnt/media</span></span>
+        </div>
+        <p class="text-xs text-slate-500 mt-1">As subpastas (nome da série, temporadas) serão criadas automaticamente dentro desta pasta.</p>
+      </div>
+
+      <button onclick="executarScript(false)"
+        class="w-full bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all">
+        <i data-lucide="rocket" class="w-5 h-5"></i>
+        <span id="scriptBtnText">EXECUTAR SCRIPT</span>
+      </button>
+    </div>
+
+    <!-- Exemplos -->
+    <details class="bg-slate-900/40 border border-slate-700/30 rounded-2xl">
+      <summary class="px-5 py-4 cursor-pointer text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-blue-400 transition flex items-center gap-2">
+        <i data-lucide="help-circle" class="w-4 h-4"></i> Ver exemplos de scripts
+      </summary>
+      <div class="px-5 pb-5 space-y-4 text-xs font-mono text-slate-300">
+        <div><p class="text-blue-400 mb-1 font-sans font-bold">Série (series/):</p>
+          <pre class="bg-slate-800 rounded-xl p-3 overflow-x-auto">{"tipo":"serie","nome":"Breaking Bad","temporadas":[{"temporada":"1","episodios":[{"nome":"S01E01","url":"http://..."}]}]}</pre></div>
+        <div><p class="text-purple-400 mb-1 font-sans font-bold">Série Animada (desenhosseries/):</p>
+          <pre class="bg-slate-800 rounded-xl p-3 overflow-x-auto">{"tipo":"desenho_serie","nome":"Patrulha Canina","temporadas":[{"temporada":"1","episodios":[{"nome":"S01E01","url":"http://..."}]}]}</pre></div>
+        <div><p class="text-pink-400 mb-1 font-sans font-bold">Série Anime (animeseries/):</p>
+          <pre class="bg-slate-800 rounded-xl p-3 overflow-x-auto">{"tipo":"anime_serie","nome":"Naruto Shippuden","temporadas":[{"temporada":"1","episodios":[{"nome":"S01E01","url":"http://..."}]}]}</pre></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ===== TAB: SCRIPT RUNNER FILMES ===== -->
+  <div id="tab-filmes" class="hidden space-y-6">
+
+    <div class="bg-slate-900/60 border border-slate-700/50 rounded-2xl p-6 space-y-5">
+      <div>
+        <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Cole o script JSON ou faça upload do arquivo</p>
+        <p class="text-xs text-slate-500 mb-4">Cada filme será salvo em sua própria subpasta dentro do destino escolhido.</p>
+        <label class="flex items-center gap-3 w-full bg-slate-800 border border-dashed border-slate-600 hover:border-cyan-500 rounded-xl px-4 py-3 cursor-pointer transition mb-3 group">
+          <i data-lucide="upload" class="w-5 h-5 text-slate-500 group-hover:text-cyan-400 transition"></i>
+          <span class="text-slate-400 text-sm group-hover:text-white transition">Clique para carregar um arquivo <code class="text-cyan-400">.json</code></span>
+          <input type="file" id="filmesFile" accept=".json" class="hidden" onchange="carregarArquivoFilmes(this)">
+        </label>
+        <textarea id="filmesInput" rows="12" placeholder='{
+  "tipo": "filmes_batch",
+  "filmes": [
+    { "nome": "Inception (2010)", "url": "http://link.mp4" },
+    { "nome": "Interstellar (2014)", "url": "http://link2.mp4" }
+  ]
+}'
+          class="w-full bg-slate-800 border border-slate-700 rounded-xl p-4 text-white font-mono text-xs resize-none focus:outline-none focus:border-cyan-500 transition"></textarea>
+      </div>
+      <div class="flex gap-3">
+        <button onclick="previewFilmes()"
+          class="flex-1 bg-slate-800 hover:bg-slate-700 border border-cyan-500/40 hover:border-cyan-500 text-cyan-400 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all">
+          <i data-lucide="eye" class="w-5 h-5"></i> PRÉ-VISUALIZAR
+        </button>
+        <button onclick="limparFilmes()"
+          class="px-5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-red-400 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Preview Filmes + Pasta + Executar -->
+    <div id="filmesPreview" class="hidden bg-slate-900/60 border border-slate-700/50 rounded-2xl p-6 space-y-5">
+      <div class="flex items-center justify-between">
+        <h2 class="text-sm font-bold text-white flex items-center gap-2">
+          <i data-lucide="film" class="text-cyan-400 w-5 h-5"></i> Resumo do Script
+        </h2>
+        <span id="filmesBadge" class="text-xs px-3 py-1 rounded-full font-bold border bg-cyan-500/20 text-cyan-400 border-cyan-500/30"></span>
+      </div>
+      <div id="filmesContent" class="space-y-2"></div>
+
+      <div class="border-t border-slate-700/50 pt-4">
+        <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+          <i data-lucide="folder-open" class="w-4 h-4 text-cyan-400"></i> Pasta de destino base
+        </p>
+        <div id="fm_breadcrumb" class="flex items-center gap-1 text-sm text-slate-400 mb-3 flex-wrap"></div>
+        <div id="fm_pastasLista" class="bg-slate-800 border border-slate-700 rounded-xl divide-y divide-slate-700/50 max-h-48 overflow-y-auto"></div>
+        <div class="mt-3 flex items-center gap-2 text-sm text-slate-300">
+          <i data-lucide="folder-check" class="w-4 h-4 text-cyan-400"></i>
+          <span>Baixar em: <span id="fm_destinoTexto" class="text-cyan-400 font-mono">/mnt/media</span></span>
+        </div>
+        <p class="text-xs text-slate-500 mt-1">Cada filme criará sua própria subpasta automaticamente dentro do destino.</p>
+      </div>
+
+      <button onclick="executarFilmes(false)"
+        class="w-full bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-400 hover:to-teal-400 text-black font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all">
+        <i data-lucide="rocket" class="w-5 h-5"></i>
+        <span id="filmesBtnText">BAIXAR TODOS OS FILMES</span>
+      </button>
+    </div>
+
+    <!-- Exemplo -->
+    <details class="bg-slate-900/40 border border-slate-700/30 rounded-2xl">
+      <summary class="px-5 py-4 cursor-pointer text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-cyan-400 transition flex items-center gap-2">
+        <i data-lucide="help-circle" class="w-4 h-4"></i> Ver exemplo de script
+      </summary>
+      <div class="px-5 pb-5 text-xs font-mono text-slate-300">
+        <p class="text-cyan-400 mb-1 font-sans font-bold">Lote de Filmes (filmes/):</p>
+        <pre class="bg-slate-800 rounded-xl p-3 overflow-x-auto">{"tipo":"filmes_batch","filmes":[{"nome":"Inception (2010)","url":"http://link.mp4"},{"nome":"Interstellar (2014)","url":"http://link2.mp4"}]}</pre>
+      </div>
+    </details>
+  </div>
+
+</div>
+
+<script>
+// ─── TABS ─────────────────────────────────────────────────────────────────────
+const TAB_ACTIVE = {
+  coringa: 'flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-yellow-500 text-black shadow-lg shadow-yellow-500/20',
+  script:  'flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-blue-500 text-white shadow-lg shadow-blue-500/20',
+  filmes:  'flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-cyan-500 text-black shadow-lg shadow-cyan-500/20',
+};
+const TAB_INACTIVE = 'flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-slate-900/60 border border-slate-700 text-slate-400 hover:border-yellow-500 hover:text-yellow-400';
+
+function switchTab(tab) {
+  ['coringa','script','filmes'].forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab);
+    document.getElementById('tab-btn-' + t).className = t === tab ? TAB_ACTIVE[t] : TAB_INACTIVE;
+  });
+  lucide.createIcons();
+}
+
+// ─── CORINGA ──────────────────────────────────────────────────────────────────
+let selectedItems = [], currentPath = "", destinoPath = "";
+let searchTimer;
+
+document.getElementById("searchInput").addEventListener("input", function() {
+  clearTimeout(searchTimer);
+  const q = this.value.trim();
+  if (q.length < 2) { document.getElementById("resultados").classList.add("hidden"); return; }
+  searchTimer = setTimeout(() => buscar(q), 350);
+});
+
+async function buscar(q) {
+  const res = await fetch("/search_coringa", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({query: q}) });
+  renderResultados(await res.json());
+}
+
+function renderResultados(items) {
+  const el = document.getElementById("resultados");
+  if (!items.length) { el.innerHTML = '<p class="text-slate-500 text-sm px-4 py-3">Nenhum resultado encontrado.</p>'; el.classList.remove("hidden"); return; }
+  el.innerHTML = items.map((item, i) => `
+    <div onclick="selecionarItem(${i})" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-700 cursor-pointer transition">
+      ${item.logo ? `<img src="${item.logo}" class="w-8 h-8 rounded object-cover flex-shrink-0" onerror="this.style.display='none'">` : '<div class="w-8 h-8 rounded bg-slate-700 flex-shrink-0"></div>'}
+      <div class="flex-1 min-w-0"><p class="text-white text-sm truncate">${item.nome}</p><p class="text-slate-500 text-xs truncate">${item.group || ''}</p></div>
+      <span class="text-xs px-2 py-0.5 rounded-full ${item.tipo==='filme'?'bg-blue-500/20 text-blue-400':'bg-purple-500/20 text-purple-400'}">${item.tipo}</span>
+    </div>`).join("");
+  el._items = items; el.classList.remove("hidden");
+}
+
+function selecionarItem(i) {
+  const item = document.getElementById("resultados")._items[i];
+  if (selectedItems.some(s => s.link === item.link)) {
+    document.getElementById("resultados").classList.add("hidden");
+    document.getElementById("searchInput").value = "";
+    return;
+  }
+  selectedItems.push(item);
+  renderListaItens();
+  document.getElementById("selecionado").classList.remove("hidden");
+  document.getElementById("stepDestino").classList.remove("hidden");
+  document.getElementById("resultados").classList.add("hidden");
+  document.getElementById("searchInput").value = "";
+  if (selectedItems.length === 1) carregarPastas("");
+  lucide.createIcons();
+}
+
+function removerItem(i) {
+  selectedItems.splice(i, 1);
+  renderListaItens();
+  if (!selectedItems.length) limparSelecao();
+}
+
+function renderListaItens() {
+  const el = document.getElementById("listaItens");
+  el.innerHTML = selectedItems.map((item, i) => `
+    <div class="bg-slate-800 border border-yellow-500/30 rounded-xl px-4 py-3 flex items-center gap-3">
+      ${item.logo ? `<img src="${item.logo}" class="w-8 h-8 rounded object-cover flex-shrink-0" onerror="this.style.display='none'">` : ''}
+      <div class="flex-1 min-w-0">
+        <p class="text-white text-sm font-medium truncate">${item.nome}</p>
+        <span class="text-xs px-1.5 py-0.5 rounded ${item.tipo==='filme'?'bg-blue-500/20 text-blue-400':'bg-purple-500/20 text-purple-400'}">${item.tipo}</span>
+      </div>
+      <button onclick="removerItem(${i})" class="text-slate-500 hover:text-red-400 transition ml-1 flex-shrink-0"><i data-lucide="x" class="w-4 h-4"></i></button>
+    </div>`).join("");
+  const subtitle = document.getElementById("btnSubtitle");
+  if (subtitle) subtitle.textContent = selectedItems.length > 1 ? `${selectedItems.length} arquivos — cada um em sua própria subpasta` : "";
+  lucide.createIcons();
+}
+
+function limparSelecao() {
+  selectedItems = [];
+  ["selecionado","stepDestino","stepBotao"].forEach(id => document.getElementById(id).classList.add("hidden"));
+  document.getElementById("listaItens").innerHTML = "";
+}
+
+async function carregarPastas(rel) {
+  currentPath = rel;
+  const res = await fetch("/api/storage/browse?path=" + encodeURIComponent(rel));
+  const data = await res.json();
+  destinoPath = data.path;
+
+  const bc = document.getElementById("breadcrumb");
+  const parts = data.path ? data.path.split("/") : [];
+  let html = `<span onclick="carregarPastas('')" class="cursor-pointer hover:text-yellow-400 transition">/mnt/media</span>`;
+  let acc = "";
+  parts.forEach((p, i) => {
+    acc += (acc ? "/" : "") + p; const a = acc;
+    html += ` <span class="text-slate-600">/</span> <span onclick="carregarPastas('${a}')" class="cursor-pointer hover:text-yellow-400 transition ${i===parts.length-1?'text-yellow-400':''}">${p}</span>`;
+  });
+  bc.innerHTML = html;
+
+  const pl = document.getElementById("pastasLista");
+  let phtml = "";
+  if (data.parent !== null) phtml += `<div onclick="carregarPastas('${data.parent}')" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-700 cursor-pointer transition text-slate-400"><i data-lucide="corner-left-up" class="w-4 h-4"></i><span class="text-sm">.. (voltar)</span></div>`;
+  data.folders.forEach(f => {
+    const frel = data.path ? data.path + "/" + f : f;
+    phtml += `<div onclick="carregarPastas('${frel}')" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-700 cursor-pointer transition"><i data-lucide="folder" class="w-4 h-4 text-yellow-400"></i><span class="text-white text-sm">${f}</span></div>`;
+  });
+  if (!data.folders.length) phtml += '<p class="text-slate-500 text-sm px-4 py-3 italic">Pasta vazia.</p>';
+  pl.innerHTML = phtml;
+
+  document.getElementById("destinoTexto").textContent = destinoPath ? "/mnt/media/" + destinoPath : "/mnt/media";
+  document.getElementById("stepBotao").classList.remove("hidden");
+  lucide.createIcons();
+}
+
+async function iniciarDownload() {
+  if (!selectedItems.length) return;
+  const btn = document.getElementById("btnTexto"); btn.textContent = "Enviando...";
+  const items = selectedItems.map(s => ({ name: s.nome, link: s.link }));
+  const res = await fetch("/add_coringa", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ items, dest: destinoPath }) });
+  const data = await res.json();
+  if (res.ok) { btn.textContent = "✅ " + data.message; setTimeout(() => { btn.textContent = "INICIAR DOWNLOAD CORINGA"; limparSelecao(); }, 3000); }
+  else { btn.textContent = "❌ " + (data.message || data.error); setTimeout(() => { btn.textContent = "INICIAR DOWNLOAD CORINGA"; }, 3000); }
+}
+
+// ─── Shared folder browser ────────────────────────────────────────────────────
+function renderBreadcrumb(path, elId, loader) {
+  const el = document.getElementById(elId);
+  const parts = path ? path.split("/") : [];
+  let html = `<span onclick="(${loader.toString()})('')" class="cursor-pointer hover:text-yellow-400 transition">/mnt/media</span>`;
+  let acc = "";
+  parts.forEach((p, i) => {
+    acc += (acc ? "/" : "") + p; const a = acc;
+    html += ` <span class="text-slate-600">/</span> <span onclick="(${loader.toString()})('${a}')" class="cursor-pointer hover:text-yellow-400 transition ${i===parts.length-1?'text-yellow-400':''}">${p}</span>`;
+  });
+  el.innerHTML = html;
+}
+
+function renderPastas(folders, parent, currentRel, elId, loader) {
+  const el = document.getElementById(elId);
+  let html = "";
+  if (parent !== null) html += `<div onclick="(${loader.toString()})('${parent}')" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-700 cursor-pointer transition text-slate-400"><i data-lucide="corner-left-up" class="w-4 h-4"></i><span class="text-sm">.. (voltar)</span></div>`;
+  folders.forEach(f => {
+    const rel = currentRel ? currentRel + "/" + f : f;
+    html += `<div onclick="(${loader.toString()})('${rel}')" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-700 cursor-pointer transition"><i data-lucide="folder" class="w-4 h-4 text-yellow-400"></i><span class="text-white text-sm">${f}</span></div>`;
+  });
+  if (!folders.length) html += '<p class="text-slate-500 text-sm px-4 py-3 italic">Pasta vazia.</p>';
+  el.innerHTML = html; lucide.createIcons();
+}
+
+// ─── SCRIPT RUNNER SÉRIES ────────────────────────────────────────────────────
+let parsedScript = null;
+let sc_destinoPath = "";
+
+const TIPO_CONFIG = {
+  serie:        { label: "Série",         color: "text-blue-400",   bg: "bg-blue-500/20",   icon: "📺", defaultDest: "series" },
+  filme:        { label: "Filme",         color: "text-cyan-400",   bg: "bg-cyan-500/20",   icon: "🎬", defaultDest: "filmes" },
+  desenho:      { label: "Desenho Filme", color: "text-purple-400", bg: "bg-purple-500/20", icon: "🎨", defaultDest: "desenhos" },
+  anime:        { label: "Anime Filme",   color: "text-pink-400",   bg: "bg-pink-500/20",   icon: "⚡", defaultDest: "animes" },
+  desenho_serie:{ label: "Série Animada", color: "text-purple-400", bg: "bg-purple-500/20", icon: "🎨", defaultDest: "desenhosseries" },
+  anime_serie:  { label: "Série Anime",   color: "text-pink-400",   bg: "bg-pink-500/20",   icon: "⚡", defaultDest: "animeseries" },
+};
+
+function carregarArquivo(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => { document.getElementById("scriptInput").value = e.target.result; };
+  reader.readAsText(file);
+}
+
+function limparScript() {
+  document.getElementById("scriptInput").value = "";
+  document.getElementById("scriptPreview").classList.add("hidden");
+  document.getElementById("scriptFile").value = "";
+  parsedScript = null; sc_destinoPath = "";
+}
+
+function previewScript() {
+  const raw = document.getElementById("scriptInput").value.trim();
+  if (!raw) { alert("Cole ou carregue um script JSON primeiro."); return; }
+  let script;
+  try { script = JSON.parse(raw); } catch(e) { alert("JSON inválido: " + e.message); return; }
+  parsedScript = script;
+  const tipo = (script.tipo || "").toLowerCase();
+  const cfg = TIPO_CONFIG[tipo];
+  if (!cfg) { alert(`Tipo "${script.tipo}" não reconhecido. Use: ${Object.keys(TIPO_CONFIG).join(', ')}`); return; }
+
+  const badge = document.getElementById("previewBadge");
+  badge.textContent = cfg.icon + " " + cfg.label;
+  badge.className = `text-xs px-3 py-1 rounded-full font-bold border ${cfg.bg} ${cfg.color} border-blue-500/20`;
+
+  let html = `<div class="bg-slate-800/60 border border-slate-700/50 rounded-xl px-4 py-3">
+    <p class="text-white font-bold text-sm">${script.nome || '(sem nome)'}</p>
+    <p class="text-slate-400 text-xs mt-0.5">${cfg.icon} ${cfg.label}</p>
+  </div>`;
+
+  if (["serie","desenho_serie","anime_serie"].includes(tipo)) {
+    const temps = script.temporadas || [];
+    const totalEps = temps.reduce((a, t) => a + (t.episodios?.length || 0), 0);
+    html += `<div class="text-xs text-slate-400 px-1">${temps.length} temporada(s) • ${totalEps} episódio(s) no total</div>`;
+    html += temps.map(t => `
+      <div class="bg-slate-800/40 border border-slate-700/30 rounded-xl px-4 py-3 flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg ${cfg.bg} flex items-center justify-center ${cfg.color} font-bold text-sm">T${t.temporada}</div>
+        <div><p class="text-white text-sm font-semibold">Temporada ${t.temporada}</p><p class="text-slate-400 text-xs">${t.episodios?.length || 0} episódio(s)</p></div>
+      </div>`).join('');
+  } else {
+    html += `<div class="bg-slate-800/40 border border-slate-700/30 rounded-xl px-4 py-3 text-xs font-mono text-slate-300 truncate">${script.url || '(url não informada)'}</div>`;
+  }
+
+  document.getElementById("previewContent").innerHTML = html;
+  document.getElementById("scriptPreview").classList.remove("hidden");
+  sc_carregarPastas(cfg.defaultDest);
+}
+
+async function sc_carregarPastas(rel) {
+  const res = await fetch("/api/storage/browse?path=" + encodeURIComponent(rel));
+  const data = await res.json();
+  sc_destinoPath = data.path;
+  const bc = document.getElementById("sc_breadcrumb");
+  const parts = data.path ? data.path.split("/") : [];
+  let html = `<span onclick="sc_carregarPastas('')" class="cursor-pointer hover:text-yellow-400 transition">/mnt/media</span>`;
+  let acc = "";
+  parts.forEach((p, i) => {
+    acc += (acc ? "/" : "") + p; const a = acc;
+    html += ` <span class="text-slate-600">/</span> <span onclick="sc_carregarPastas('${a}')" class="cursor-pointer hover:text-yellow-400 transition ${i===parts.length-1?'text-yellow-400':''}">${p}</span>`;
+  });
+  bc.innerHTML = html;
+  const pl = document.getElementById("sc_pastasLista");
+  let phtml = "";
+  if (data.parent !== null) phtml += `<div onclick="sc_carregarPastas('${data.parent}')" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-700 cursor-pointer transition text-slate-400"><i data-lucide="corner-left-up" class="w-4 h-4"></i><span class="text-sm">.. (voltar)</span></div>`;
+  data.folders.forEach(f => {
+    const frel = data.path ? data.path + "/" + f : f;
+    phtml += `<div onclick="sc_carregarPastas('${frel}')" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-700 cursor-pointer transition"><i data-lucide="folder" class="w-4 h-4 text-yellow-400"></i><span class="text-white text-sm">${f}</span></div>`;
+  });
+  if (!data.folders.length) phtml += '<p class="text-slate-500 text-sm px-4 py-3 italic">Pasta vazia.</p>';
+  pl.innerHTML = phtml;
+  document.getElementById("sc_destinoTexto").textContent = sc_destinoPath ? "/mnt/media/" + sc_destinoPath : "/mnt/media";
+  lucide.createIcons();
+}
+
+async function executarScript(force = false) {
+  if (!parsedScript) return;
+  const btn = document.getElementById("scriptBtnText"); btn.textContent = "Executando...";
+  const res = await fetch("/run_script", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ script: parsedScript, dest: sc_destinoPath, force })
+  });
+  const data = await res.json();
+  if (res.status === 409) { if (confirm(data.message || "Já existe. Deseja sobrescrever?")) executarScript(true); btn.textContent = "EXECUTAR SCRIPT"; return; }
+  if (res.ok) { btn.textContent = "✅ " + data.message; setTimeout(() => { window.location.href = "/downloads"; }, 1500); }
+  else { btn.textContent = "❌ " + (data.message || data.error || "Erro"); setTimeout(() => { btn.textContent = "EXECUTAR SCRIPT"; }, 3000); }
+}
+
+// ─── SCRIPT RUNNER FILMES ────────────────────────────────────────────────────
+let parsedFilmes = null;
+let fm_destinoPath = "";
+
+function carregarArquivoFilmes(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => { document.getElementById("filmesInput").value = e.target.result; };
+  reader.readAsText(file);
+}
+
+function limparFilmes() {
+  document.getElementById("filmesInput").value = "";
+  document.getElementById("filmesPreview").classList.add("hidden");
+  document.getElementById("filmesFile").value = "";
+  parsedFilmes = null; fm_destinoPath = "";
+}
+
+function previewFilmes() {
+  const raw = document.getElementById("filmesInput").value.trim();
+  if (!raw) { alert("Cole ou carregue um script JSON primeiro."); return; }
+  let script;
+  try { script = JSON.parse(raw); } catch(e) { alert("JSON inválido: " + e.message); return; }
+
+  if ((script.tipo || "").toLowerCase() !== "filmes_batch") {
+    alert('Este campo é só para tipo "filmes_batch". Para séries use o tab "Script Runner Séries".'); return;
+  }
+
+  parsedFilmes = script;
+  const filmes = script.filmes || [];
+  document.getElementById("filmesBadge").textContent = `🎬 ${filmes.length} filme(s)`;
+
+  let html = filmes.map((f, i) => `
+    <div class="bg-slate-800/40 border border-slate-700/30 rounded-xl px-4 py-3 flex items-center gap-3">
+      <div class="w-7 h-7 rounded-lg bg-cyan-500/20 flex items-center justify-center text-cyan-400 font-bold text-xs flex-shrink-0">${i+1}</div>
+      <div class="flex-1 min-w-0">
+        <p class="text-white text-sm font-semibold truncate">${f.nome || '(sem nome)'}</p>
+        <p class="text-slate-500 text-xs font-mono truncate">${f.url || '(sem url)'}</p>
+      </div>
+    </div>`).join('');
+  if (!filmes.length) html = '<p class="text-slate-500 text-sm italic">Nenhum filme na lista.</p>';
+
+  document.getElementById("filmesContent").innerHTML = html;
+  document.getElementById("filmesPreview").classList.remove("hidden");
+  fm_carregarPastas("filmes");
+}
+
+async function fm_carregarPastas(rel) {
+  const res = await fetch("/api/storage/browse?path=" + encodeURIComponent(rel));
+  const data = await res.json();
+  fm_destinoPath = data.path;
+  const bc = document.getElementById("fm_breadcrumb");
+  const parts = data.path ? data.path.split("/") : [];
+  let html = `<span onclick="fm_carregarPastas('')" class="cursor-pointer hover:text-cyan-400 transition">/mnt/media</span>`;
+  let acc = "";
+  parts.forEach((p, i) => {
+    acc += (acc ? "/" : "") + p; const a = acc;
+    html += ` <span class="text-slate-600">/</span> <span onclick="fm_carregarPastas('${a}')" class="cursor-pointer hover:text-cyan-400 transition ${i===parts.length-1?'text-cyan-400':''}">${p}</span>`;
+  });
+  bc.innerHTML = html;
+  const pl = document.getElementById("fm_pastasLista");
+  let phtml = "";
+  if (data.parent !== null) phtml += `<div onclick="fm_carregarPastas('${data.parent}')" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-700 cursor-pointer transition text-slate-400"><i data-lucide="corner-left-up" class="w-4 h-4"></i><span class="text-sm">.. (voltar)</span></div>`;
+  data.folders.forEach(f => {
+    const frel = data.path ? data.path + "/" + f : f;
+    phtml += `<div onclick="fm_carregarPastas('${frel}')" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-700 cursor-pointer transition"><i data-lucide="folder" class="w-4 h-4 text-cyan-400"></i><span class="text-white text-sm">${f}</span></div>`;
+  });
+  if (!data.folders.length) phtml += '<p class="text-slate-500 text-sm px-4 py-3 italic">Pasta vazia.</p>';
+  pl.innerHTML = phtml;
+  document.getElementById("fm_destinoTexto").textContent = fm_destinoPath ? "/mnt/media/" + fm_destinoPath : "/mnt/media";
+  lucide.createIcons();
+}
+
+async function executarFilmes(force = false) {
+  if (!parsedFilmes) return;
+  const btn = document.getElementById("filmesBtnText"); btn.textContent = "Executando...";
+  const res = await fetch("/run_script", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ script: parsedFilmes, dest: fm_destinoPath, force })
+  });
+  const data = await res.json();
+  if (res.status === 409) { if (confirm(data.message || "Já existe. Deseja sobrescrever?")) executarFilmes(true); btn.textContent = "BAIXAR TODOS OS FILMES"; return; }
+  if (res.ok) { btn.textContent = "✅ " + data.message; setTimeout(() => { window.location.href = "/downloads"; }, 1500); }
+  else { btn.textContent = "❌ " + (data.message || data.error || "Erro"); setTimeout(() => { btn.textContent = "BAIXAR TODOS OS FILMES"; }, 3000); }
+}
+
+lucide.createIcons();
+</script>
+{% endblock %}

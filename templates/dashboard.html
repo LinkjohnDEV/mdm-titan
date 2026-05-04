@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="mb-6 flex items-center justify-between">
+    <div>
+        <h1 class="text-2xl font-bold text-white">Dashboard de Controle</h1>
+        <p class="text-slate-500 text-sm">Atualiza a cada 30s &nbsp;·&nbsp; <span id="last-update" class="text-slate-600">--</span></p>
+    </div>
+    <div id="engine-status" class="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-xl">
+        <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+        <span class="text-xs font-bold text-emerald-400 uppercase tracking-widest">Engine Online</span>
+    </div>
+</div>
+
+<!-- ROW 1: 6 Stat Cards -->
+<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+
+    <!-- Séries -->
+    <div class="bg-[#111827] border border-slate-800 p-4 rounded-2xl hover:border-blue-500/40 transition-all">
+        <div class="flex items-center justify-between mb-3">
+            <i data-lucide="tv" class="text-blue-500 w-5 h-5"></i>
+            <span class="text-[9px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-bold uppercase">Séries</span>
+        </div>
+        <p id="stat-series" class="text-3xl font-black text-white">0</p>
+        <p class="text-[10px] text-slate-500 mt-1">jobs na fila</p>
+    </div>
+
+    <!-- Filmes -->
+    <div class="bg-[#111827] border border-slate-800 p-4 rounded-2xl hover:border-indigo-500/40 transition-all">
+        <div class="flex items-center justify-between mb-3">
+            <i data-lucide="clapperboard" class="text-indigo-400 w-5 h-5"></i>
+            <span class="text-[9px] bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded font-bold uppercase">Filmes</span>
+        </div>
+        <p id="stat-filmes" class="text-3xl font-black text-white">0</p>
+        <p class="text-[10px] text-slate-500 mt-1">jobs na fila</p>
+    </div>
+
+    <!-- Concluídos -->
+    <div class="bg-[#111827] border border-slate-800 p-4 rounded-2xl hover:border-emerald-500/40 transition-all">
+        <div class="flex items-center justify-between mb-3">
+            <i data-lucide="check-circle-2" class="text-emerald-500 w-5 h-5"></i>
+            <span class="text-[9px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-bold uppercase">OK</span>
+        </div>
+        <p id="stat-completed" class="text-3xl font-black text-white">0</p>
+        <p class="text-[10px] text-slate-500 mt-1">concluídos</p>
+    </div>
+
+    <!-- Ativos / Fila -->
+    <div class="bg-[#111827] border border-slate-800 p-4 rounded-2xl hover:border-cyan-500/40 transition-all">
+        <div class="flex items-center justify-between mb-3">
+            <i data-lucide="loader" class="text-cyan-400 w-5 h-5"></i>
+            <span class="text-[9px] bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded font-bold uppercase">Ativo</span>
+        </div>
+        <p class="text-3xl font-black text-white"><span id="stat-downloading">0</span><span class="text-slate-600 text-xl"> / </span><span id="stat-queued" class="text-slate-400 text-xl">0</span></p>
+        <p class="text-[10px] text-slate-500 mt-1">baixando / fila</p>
+    </div>
+
+    <!-- Falhas -->
+    <div class="bg-[#111827] border border-slate-800 p-4 rounded-2xl hover:border-red-500/40 transition-all">
+        <div class="flex items-center justify-between mb-3">
+            <i data-lucide="alert-triangle" class="text-red-400 w-5 h-5"></i>
+            <span class="text-[9px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded font-bold uppercase">Erros</span>
+        </div>
+        <p class="text-3xl font-black text-white"><span id="stat-failed">0</span><span class="text-slate-600 text-xl"> / </span><span id="stat-cancelled" class="text-slate-400 text-xl">0</span></p>
+        <p class="text-[10px] text-slate-500 mt-1">falhas / canc.</p>
+    </div>
+
+    <!-- Disco -->
+    <div class="bg-[#111827] border border-slate-800 p-4 rounded-2xl hover:border-amber-500/40 transition-all">
+        <div class="flex items-center justify-between mb-3">
+            <i data-lucide="hard-drive" class="text-amber-400 w-5 h-5"></i>
+            <span id="stat-disk-pct" class="text-[9px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded font-bold">0%</span>
+        </div>
+        <p id="stat-disk-used" class="text-2xl font-black text-white leading-tight">0</p>
+        <p id="stat-disk-total" class="text-[10px] text-slate-500">de 0 GB</p>
+        <div class="w-full bg-slate-800 rounded-full h-1 mt-2">
+            <div id="stat-disk-bar" class="bg-amber-400 h-1 rounded-full transition-all" style="width:0%"></div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ROW 2: Chart + Downloads ativos -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+
+    <!-- Chart 7 dias -->
+    <div class="lg:col-span-2 bg-[#111827] border border-slate-800 p-6 rounded-2xl">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="font-bold text-white flex items-center gap-2">
+                <i data-lucide="bar-chart-2" class="text-blue-500 w-5 h-5"></i> Downloads — Últimos 7 dias
+            </h2>
+            <span id="stat-uptime" class="text-[10px] font-mono text-slate-500 bg-slate-800 px-3 py-1 rounded-lg">--</span>
+        </div>
+        <div class="h-52">
+            <canvas id="downloadsChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Downloads ativos agora -->
+    <div class="bg-[#111827] border border-slate-800 p-6 rounded-2xl flex flex-col">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="font-bold text-white flex items-center gap-2">
+                <i data-lucide="activity" class="text-cyan-400 w-5 h-5"></i> Baixando Agora
+            </h2>
+            <span id="ativos-page-label" class="text-[10px] text-slate-500 font-mono hidden"></span>
+        </div>
+        <div id="ativos-list" class="space-y-3 flex-1">
+            <p class="text-slate-600 text-sm italic text-center mt-8">Nenhum download ativo</p>
+        </div>
+        <div id="ativos-pagination" class="hidden mt-4 flex items-center justify-between border-t border-slate-800 pt-3">
+            <button onclick="ativosPage(-1)" class="text-slate-400 hover:text-white text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition-all">‹ Ant</button>
+            <span id="ativos-page-info" class="text-xs text-slate-500 font-mono"></span>
+            <button onclick="ativosPage(1)" class="text-slate-400 hover:text-white text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition-all">Prox ›</button>
+        </div>
+    </div>
+
+</div>
+
+<!-- ROW 3: Recentes + Index Stats + Sistema -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- Recentes -->
+    <div class="lg:col-span-2 bg-[#111827] border border-slate-800 rounded-2xl overflow-hidden flex flex-col">
+        <div class="p-5 border-b border-slate-800 flex items-center justify-between">
+            <h2 class="font-bold text-white flex items-center gap-2">
+                <i data-lucide="clock" class="text-slate-400 w-5 h-5"></i> Atividade Recente
+            </h2>
+            <a href="/downloads" class="text-[10px] text-blue-400 hover:text-blue-300 font-bold uppercase tracking-wider">Ver tudo →</a>
+        </div>
+        <div id="recentes-list" class="divide-y divide-slate-800/60 flex-1">
+            <p class="text-slate-600 text-sm italic text-center p-6">Carregando...</p>
+        </div>
+        <div id="recentes-pagination" class="hidden px-5 py-3 border-t border-slate-800 flex items-center justify-between">
+            <button onclick="recentesPage(-1)" class="text-slate-400 hover:text-white text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition-all">‹ Anterior</button>
+            <span id="recentes-page-info" class="text-xs text-slate-500 font-mono"></span>
+            <button onclick="recentesPage(1)" class="text-slate-400 hover:text-white text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition-all">Próximo ›</button>
+        </div>
+    </div>
+
+    <!-- Painel direito: Index + Sistema -->
+    <div class="space-y-4">
+
+        <!-- M3U Index -->
+        <div class="bg-[#111827] border border-slate-800 p-5 rounded-2xl">
+            <h2 class="font-bold text-white flex items-center gap-2 mb-4">
+                <i data-lucide="database" class="text-purple-400 w-5 h-5"></i> Índice M3U
+            </h2>
+            <div class="space-y-3">
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400 text-sm flex items-center gap-2"><i data-lucide="clapperboard" class="w-4 h-4 text-slate-600"></i> Filmes indexados</span>
+                    <span id="idx-filmes" class="font-bold text-white text-sm">--</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400 text-sm flex items-center gap-2"><i data-lucide="tv" class="w-4 h-4 text-slate-600"></i> Séries indexadas</span>
+                    <span id="idx-series" class="font-bold text-white text-sm">--</span>
+                </div>
+                <div class="border-t border-slate-800 pt-3 flex justify-between items-center">
+                    <span class="text-slate-500 text-xs">Total no banco</span>
+                    <span id="idx-total" class="font-black text-blue-400">--</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-500 text-xs">Tempo de indexação</span>
+                    <span id="idx-time" class="text-xs text-slate-400 font-mono">--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sistema -->
+        <div class="bg-[#111827] border border-slate-800 p-5 rounded-2xl">
+            <h2 class="font-bold text-white flex items-center gap-2 mb-4">
+                <i data-lucide="cpu" class="text-emerald-400 w-5 h-5"></i> Sistema
+            </h2>
+            <div class="space-y-3">
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400 text-sm">Episódios baixados</span>
+                    <span id="stat-episodios" class="font-bold text-emerald-400 text-sm">--</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400 text-sm">Webhooks ativos</span>
+                    <span id="stat-webhooks" class="font-bold text-purple-400 text-sm">--</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400 text-sm">Uptime servidor</span>
+                    <span id="stat-uptime2" class="font-bold text-cyan-400 text-sm font-mono">--</span>
+                </div>
+                <div class="border-t border-slate-800 pt-3 flex justify-between items-center">
+                    <span class="text-slate-500 text-xs">Worker</span>
+                    <span class="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-bold">ONLINE</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const ctx = document.getElementById('downloadsChart').getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: [], datasets: [{ label: 'Downloads', data: [], backgroundColor: '#3b82f6', borderRadius: 6, barThickness: 28 }] },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} concluídos` } } },
+            scales: {
+                y: { grid: { color: '#1e293b' }, ticks: { color: '#64748b', stepSize: 1 }, beginAtZero: true },
+                x: { grid: { display: false }, ticks: { color: '#64748b' } }
+            }
+        }
+    });
+
+    const tipoIcon  = { serie: '📺', filme: '🎬' };
+    const tipoColor = { completed: 'text-emerald-400', failed: 'text-red-400', cancelled: 'text-slate-500' };
+    const statusLabel = { completed: 'Concluído', failed: 'Falhou', cancelled: 'Cancelado' };
+
+    const PER_PAGE_ATIVOS   = 5;
+    const PER_PAGE_RECENTES = 5;
+    let allAtivos   = [];
+    let allRecentes = [];
+    let ativosCurrentPage   = 1;
+    let recentesCurrentPage = 1;
+
+    // ── Paginação: Ativos ──
+    function renderAtivos() {
+        const total = allAtivos.length;
+        const totalPages = Math.max(1, Math.ceil(total / PER_PAGE_ATIVOS));
+        ativosCurrentPage = Math.min(ativosCurrentPage, totalPages);
+        const start = (ativosCurrentPage - 1) * PER_PAGE_ATIVOS;
+        const slice = allAtivos.slice(start, start + PER_PAGE_ATIVOS);
+
+        const list = document.getElementById('ativos-list');
+        const pag  = document.getElementById('ativos-pagination');
+        const info = document.getElementById('ativos-page-info');
+
+        if (total === 0) {
+            list.innerHTML = '<p class="text-slate-600 text-sm italic text-center mt-4">Nenhum download ativo</p>';
+            pag.classList.add('hidden');
+            return;
+        }
+
+        list.innerHTML = slice.map(a => `
+            <div class="flex items-center gap-3 bg-cyan-500/5 border border-cyan-500/10 rounded-xl p-3">
+                <span class="text-lg">${tipoIcon[a.tipo] || '📁'}</span>
+                <div class="flex-1 min-w-0">
+                    <p class="text-white text-xs font-semibold truncate">${a.nome}</p>
+                    <p class="text-slate-500 text-[10px]">${a.tipo === 'serie' ? 'T' + a.temporada + ' · ' + a.ep_baixados + '/' + a.ep_total + ' eps' : 'Filme individual'}</p>
+                </div>
+                <span class="w-2 h-2 bg-cyan-400 rounded-full animate-pulse flex-shrink-0"></span>
+            </div>
+        `).join('');
+
+        info.innerText = `${ativosCurrentPage} / ${totalPages}`;
+        if (totalPages > 1) pag.classList.remove('hidden'); else pag.classList.add('hidden');
+    }
+
+    function ativosPage(dir) {
+        const totalPages = Math.max(1, Math.ceil(allAtivos.length / PER_PAGE_ATIVOS));
+        ativosCurrentPage = Math.min(Math.max(1, ativosCurrentPage + dir), totalPages);
+        renderAtivos();
+    }
+
+    // ── Paginação: Recentes ──
+    function renderRecentes() {
+        const total = allRecentes.length;
+        const totalPages = Math.max(1, Math.ceil(total / PER_PAGE_RECENTES));
+        recentesCurrentPage = Math.min(recentesCurrentPage, totalPages);
+        const start = (recentesCurrentPage - 1) * PER_PAGE_RECENTES;
+        const slice = allRecentes.slice(start, start + PER_PAGE_RECENTES);
+
+        const list = document.getElementById('recentes-list');
+        const pag  = document.getElementById('recentes-pagination');
+        const info = document.getElementById('recentes-page-info');
+
+        if (total === 0) {
+            list.innerHTML = '<p class="text-slate-600 text-sm italic text-center p-6">Sem atividade recente</p>';
+            pag.classList.add('hidden');
+            return;
+        }
+
+        list.innerHTML = slice.map(r => `
+            <div class="flex items-center gap-4 px-5 py-3 hover:bg-slate-800/40 transition-all">
+                <span class="text-xl w-6 text-center">${tipoIcon[r.tipo] || '📁'}</span>
+                <div class="flex-1 min-w-0">
+                    <p class="text-white text-sm font-semibold truncate">${r.nome}</p>
+                    <p class="text-slate-500 text-xs">${r.tipo === 'serie' ? 'Temporada ' + r.temporada + ' · ' + r.episodios + ' eps' : 'Filme'}</p>
+                </div>
+                <div class="text-right flex-shrink-0">
+                    <p class="text-xs font-bold ${tipoColor[r.status] || 'text-slate-400'}">${statusLabel[r.status] || r.status}</p>
+                    <p class="text-[10px] text-slate-600 font-mono">${r.finished_at}</p>
+                </div>
+            </div>
+        `).join('');
+
+        info.innerText = `${recentesCurrentPage} / ${totalPages}`;
+        if (totalPages > 1) pag.classList.remove('hidden'); else pag.classList.add('hidden');
+    }
+
+    function recentesPage(dir) {
+        const totalPages = Math.max(1, Math.ceil(allRecentes.length / PER_PAGE_RECENTES));
+        recentesCurrentPage = Math.min(Math.max(1, recentesCurrentPage + dir), totalPages);
+        renderRecentes();
+    }
+
+    // ── Load principal ──
+    async function loadDashboard() {
+        try {
+            const res = await fetch("/api/dashboard_stats");
+            const d = await res.json();
+
+            // Cards
+            document.getElementById('stat-series').innerText = d.series;
+            document.getElementById('stat-filmes').innerText = d.filmes;
+            document.getElementById('stat-completed').innerText = d.completed;
+            document.getElementById('stat-downloading').innerText = d.downloading_now;
+            document.getElementById('stat-queued').innerText = d.queued_now;
+            document.getElementById('stat-failed').innerText = d.failed;
+            document.getElementById('stat-cancelled').innerText = d.cancelled;
+            document.getElementById('stat-disk-used').innerText = d.disk_used_gb + ' GB';
+            document.getElementById('stat-disk-total').innerText = 'de ' + d.disk_total_gb + ' GB';
+            document.getElementById('stat-disk-pct').innerText = d.disk_percent + '%';
+            document.getElementById('stat-disk-bar').style.width = d.disk_percent + '%';
+            document.getElementById('stat-uptime').innerText = '⏱ ' + d.uptime;
+            document.getElementById('stat-uptime2').innerText = d.uptime;
+
+            // Index
+            document.getElementById('idx-filmes').innerText = d.index_filmes.toLocaleString('pt-BR');
+            document.getElementById('idx-series').innerText = d.index_series.toLocaleString('pt-BR');
+            document.getElementById('idx-total').innerText = d.index_total.toLocaleString('pt-BR');
+            document.getElementById('idx-time').innerText = d.index_time + 's';
+
+            // Sistema
+            document.getElementById('stat-episodios').innerText = d.total_episodios.toLocaleString('pt-BR');
+            document.getElementById('stat-webhooks').innerText = d.webhooks;
+
+            // Chart 7 dias
+            if (d.downloads_7d && d.downloads_7d.length > 0) {
+                chart.data.labels = d.downloads_7d.map(r => r.dia);
+                chart.data.datasets[0].data = d.downloads_7d.map(r => r.total);
+            } else {
+                chart.data.labels = ['Sem dados'];
+                chart.data.datasets[0].data = [0];
+            }
+            chart.update();
+
+            // Paginação ativos (não reseta página se apenas atualizou)
+            allAtivos = d.ativos || [];
+            renderAtivos();
+
+            // Paginação recentes
+            allRecentes = d.recentes || [];
+            renderRecentes();
+
+            document.getElementById('last-update').innerText = 'atualizado ' + new Date().toLocaleTimeString('pt-BR');
+            lucide.createIcons();
+
+        } catch(e) { console.error("Erro API", e); }
+    }
+
+    loadDashboard();
+    setInterval(loadDashboard, 30000);
+</script>
+
+{% endblock %}

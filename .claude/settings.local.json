@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l /opt/mdm/*.py /opt/mdm/*.sh)",
+      "Bash(git config:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)",
+      "Bash(docker compose:*)",
+      "Bash(python -c \"import worker\")",
+      "Bash(python3 -c \"import worker\")",
+      "Bash(python3 -c \":*)",
+      "Bash(umount /mnt/media)",
+      "Bash(mount -t cifs //10.0.3.52/media /mnt/media -o username=jellyfin,password='28285697@',uid=3002,gid=3002,vers=3.0)",
+      "Bash(pip3 --version)",
+      "Bash(python3 -m venv venv)",
+      "Bash(venv/bin/pip install:*)",
+      "Bash(systemctl daemon-reload:*)",
+      "Bash(systemctl enable:*)",
+      "Bash(systemctl start:*)",
+      "Bash(systemctl status:*)",
+      "Bash(python3:*)",
+      "Bash(nginx -t)",
+      "Bash(systemctl list-units:*)",
+      "Bash(systemctl restart:*)",
+      "Bash(systemctl is-active:*)",
+      "Bash(ls:*)",
+      "Bash(kill:*)",
+      "Bash(grep -v \"^--$\")",
+      "Bash(tail -30 /opt/mdm/logs/*.log)",
+      "Bash(docker-compose logs:*)",
+      "Bash(curl -s -X POST http://localhost:5000/add_coringa -H \"Content-Type: application/json\" -d '{\"\"\"\"items\"\"\"\":[{\"\"\"\"name\"\"\"\":\"\"\"\"Suits S03E09\"\"\"\",\"\"\"\"link\"\"\"\":\"\"\"\"http://cdnfonte.com:80/series/455652/668602/16936127.mp4\"\"\"\"}],\"\"\"\"dest\"\"\"\":\"\"\"\"series/Suits/Season 3\"\"\"\"}' -b \"session=test\")",
+      "Skill(update-config)"
+    ]
+  }
+}

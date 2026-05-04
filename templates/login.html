@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MDM Titan | Login</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background: radial-gradient(circle at center, #1e293b 0%, #020617 100%);
+        }
+        .glass-login {
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .input-focus:focus {
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-6">
+
+    <div class="glass-login w-full max-w-md rounded-3xl p-8 md:p-10 transition-all">
+        
+        <div class="text-center mb-10">
+            <div class="inline-flex items-center justify-center w-20 h-20 bg-blue-600/10 rounded-2xl mb-4 border border-blue-500/20">
+                <i data-lucide="shield-half" class="w-10 h-10 text-blue-500"></i>
+            </div>
+            <h1 class="text-2xl font-black text-white tracking-tight uppercase">MDM TITAN</h1>
+            <p class="text-slate-500 text-sm mt-1 font-medium tracking-wide">Automation Command Center</p>
+        </div>
+
+        {% if error %}
+        <div class="mb-6 flex items-center gap-3 bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-xl text-sm animate-bounce">
+            <i data-lucide="alert-circle" class="w-4 h-4"></i>
+            <span>{{ error }}</span>
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/login" class="space-y-5">
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">Credenciais de Acesso</label>
+                <div class="relative">
+                    <i data-lucide="user" class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4"></i>
+                    <input type="text" name="username" placeholder="Usuário" required
+                        class="w-full bg-[#0b0f1a] border border-slate-800 rounded-xl pl-12 pr-4 py-4 text-white placeholder-slate-600 outline-none transition-all input-focus">
+                </div>
+            </div>
+
+            <div class="relative">
+                <i data-lucide="lock" class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4"></i>
+                <input type="password" name="password" placeholder="Senha de Segurança" required
+                    class="w-full bg-[#0b0f1a] border border-slate-800 rounded-xl pl-12 pr-4 py-4 text-white placeholder-slate-600 outline-none transition-all input-focus">
+            </div>
+
+            <div class="flex items-center gap-2 mt-2 ml-1">
+                <input type="checkbox" id="remember" name="remember" class="w-4 h-4 rounded bg-[#0b0f1a] border-slate-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-slate-900 cursor-pointer">
+                <label for="remember" class="text-sm font-medium text-slate-500 cursor-pointer select-none hover:text-slate-300 transition-colors">Lembrar credenciais</label>
+            </div>
+
+            <button type="submit" 
+                class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-600/20 active:scale-[0.98] mt-4">
+                <i data-lucide="log-in" class="w-5 h-5"></i> ENTRAR NO SISTEMA
+            </button>
+        </form>
+
+        <div class="mt-10 pt-6 border-t border-slate-800/50 text-center">
+            <p class="text-[10px] text-slate-600 font-bold uppercase tracking-[0.2em]">© 2026 Dimas Net - High Performance Automation</p>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

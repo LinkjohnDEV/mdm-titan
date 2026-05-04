@@ -1,0 +1,8 @@
+.env
+data/dados.txt
+data/fontes/
+logs/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store

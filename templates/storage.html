@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div>
+        <h1 class="text-3xl font-bold text-white flex items-center gap-3">
+            <i data-lucide="database" class="text-blue-500"></i> Explorer Storage
+        </h1>
+        <p class="text-slate-400 font-mono text-xs mt-1 bg-slate-800/30 inline-block px-2 py-1 rounded">
+            Caminho: /{{ current }}
+        </p>
+    </div>
+    <div class="flex items-center gap-3">
+        <button onclick="openMkdir()"
+            class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all">
+            <i data-lucide="folder-plus" class="w-4 h-4"></i> Nova Pasta
+        </button>
+        {% if parent is not none %}
+        <a href="/storage{{ parent }}"
+            class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-blue-400 px-4 py-2 rounded-xl border border-slate-700 transition-all text-sm font-bold">
+            <i data-lucide="chevron-left" class="w-4 h-4"></i> Voltar
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="bg-[#111827] border border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
+    <div class="p-4 border-b border-slate-800 bg-[#0b0f1a]/50">
+        <div class="relative">
+            <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4"></i>
+            <input type="text" id="searchInput" onkeyup="filterStorage()"
+                placeholder="Buscar arquivos ou pastas pelo nome..."
+                class="w-full bg-[#111827] border border-slate-700 rounded-xl pl-11 pr-4 py-3 text-sm text-white focus:ring-1 focus:ring-blue-500 outline-none transition-all">
+        </div>
+    </div>
+
+    <div class="grid grid-cols-12 bg-[#0b0f1a] border-b border-slate-800 p-4 text-[10px] uppercase tracking-widest text-slate-500 font-black">
+        <div class="col-span-7 md:col-span-8">Nome do Item</div>
+        <div class="col-span-3 md:col-span-2 text-center">Tipo</div>
+        <div class="col-span-2 text-right">Ações</div>
+    </div>
+
+    <div class="divide-y divide-slate-800" id="storageItems">
+        {% if not items %}
+        <div class="p-10 text-center text-slate-500 italic">
+            <i data-lucide="folder-open" class="w-12 h-12 mx-auto mb-3 opacity-20"></i>
+            Esta pasta está vazia.
+        </div>
+        {% endif %}
+
+        {% for item in items %}
+        <div class="storage-item grid grid-cols-12 p-4 hover:bg-slate-800/30 transition-all items-center group hidden"
+             data-name="{{ item.name }}"
+             data-path="{% if current %}{{ current }}/{% endif %}{{ item.name }}"
+             data-isdir="{{ 'true' if item.is_dir else 'false' }}">
+
+            <div class="col-span-7 md:col-span-8 flex items-center gap-4">
+                {% if item.is_dir %}
+                <div class="p-2 bg-emerald-500/10 rounded-lg flex-shrink-0">
+                    <i data-lucide="folder" class="w-5 h-5 text-emerald-500 fill-emerald-500/20"></i>
+                </div>
+                <a href="/storage/{% if current %}{{ current }}/{% endif %}{{ item.name }}"
+                    class="text-emerald-400 font-semibold hover:underline decoration-emerald-500/40 underline-offset-4 truncate block">
+                    {{ item.name }}
+                </a>
+                {% else %}
+                <div class="p-2 bg-slate-700/30 rounded-lg flex-shrink-0">
+                    <i data-lucide="file-text" class="w-5 h-5 text-slate-400"></i>
+                </div>
+                <span class="text-slate-300 truncate block">{{ item.name }}</span>
+                {% endif %}
+            </div>
+
+            <div class="col-span-3 md:col-span-2 text-center flex flex-col items-center gap-1">
+                {% if item.is_dir %}
+                <span class="text-[10px] bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded font-bold">PASTA</span>
+                {% else %}
+                <span class="text-[10px] bg-slate-800 text-slate-500 px-2 py-1 rounded font-bold border border-slate-700">ARQUIVO</span>
+                {% if item.size %}
+                <span class="text-[10px] text-slate-500 font-mono">{{ item.size }}</span>
+                {% endif %}
+                {% endif %}
+            </div>
+
+            <div class="col-span-2 flex items-center justify-end gap-1">
+                <button onclick="openRename(this)"
+                    class="p-1.5 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all"
+                    title="Renomear">
+                    <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                </button>
+                <button onclick="openMove(this)"
+                    class="p-1.5 text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-all"
+                    title="Mover">
+                    <i data-lucide="move" class="w-3.5 h-3.5"></i>
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div id="paginationControls" class="p-4 border-t border-slate-800 bg-[#0b0f1a] flex justify-between items-center hidden">
+        <span class="text-xs text-slate-400 font-bold" id="pageInfo">Página 1 de 1</span>
+        <div class="flex gap-2">
+            <button id="btnPrev" onclick="changePage(-1)" class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg disabled:opacity-30 transition-all">
+                <i data-lucide="chevron-left" class="w-4 h-4"></i>
+            </button>
+            <button id="btnNext" onclick="changePage(1)" class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg disabled:opacity-30 transition-all">
+                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAL: Nova Pasta ===== -->
+<div id="modal-mkdir" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div class="bg-[#111827] border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+        <h3 class="text-white font-bold text-lg mb-1 flex items-center gap-2">
+            <i data-lucide="folder-plus" class="text-emerald-400 w-5 h-5"></i> Nova Pasta
+        </h3>
+        <p class="text-slate-500 text-xs mb-4">Será criada em: <span class="text-slate-300 font-mono">/{{ current }}/</span></p>
+        <input type="text" id="mkdir-name" placeholder="Nome da pasta..."
+            class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-emerald-500 outline-none mb-4"
+            onkeydown="if(event.key==='Enter') confirmMkdir()">
+        <div class="flex gap-3">
+            <button onclick="closeModals()" class="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-400 hover:bg-slate-800 transition-all text-sm font-bold">Cancelar</button>
+            <button onclick="confirmMkdir()" class="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition-all text-sm font-bold">Criar</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAL: Renomear ===== -->
+<div id="modal-rename" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div class="bg-[#111827] border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+        <h3 class="text-white font-bold text-lg mb-1 flex items-center gap-2">
+            <i data-lucide="pencil" class="text-blue-400 w-5 h-5"></i> Renomear
+        </h3>
+        <p class="text-slate-500 text-xs mb-4">Item: <span id="rename-current-name" class="text-slate-300 font-mono"></span></p>
+        <input type="text" id="rename-new-name" placeholder="Novo nome..."
+            class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none mb-4"
+            onkeydown="if(event.key==='Enter') confirmRename()">
+        <div class="flex gap-3">
+            <button onclick="closeModals()" class="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-400 hover:bg-slate-800 transition-all text-sm font-bold">Cancelar</button>
+            <button onclick="confirmRename()" class="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition-all text-sm font-bold">Renomear</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAL: Mover ===== -->
+<div id="modal-move" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div class="bg-[#111827] border border-slate-700 rounded-2xl p-6 w-full max-w-lg shadow-2xl">
+        <h3 class="text-white font-bold text-lg mb-1 flex items-center gap-2">
+            <i data-lucide="move" class="text-amber-400 w-5 h-5"></i> Mover item
+        </h3>
+        <p class="text-slate-500 text-xs mb-4">
+            Movendo: <span id="move-src-name" class="text-amber-300 font-mono font-bold"></span>
+        </p>
+
+        <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2">Pastas rápidas</p>
+        <div id="move-folder-btns" class="flex flex-wrap gap-2 mb-4">
+            <span class="text-slate-600 text-xs italic">Carregando...</span>
+        </div>
+
+        <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2">Destino (pasta)</p>
+        <div class="relative mb-1">
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-mono">/mnt/media/</span>
+            <input type="text" id="move-dst"
+                placeholder="animeseries/Jujutsu Kaisen"
+                class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl pl-[90px] pr-4 py-3 text-white font-mono text-sm focus:ring-2 focus:ring-amber-500 outline-none"
+                onkeydown="if(event.key==='Enter') confirmMove()">
+        </div>
+        <p class="text-[10px] text-slate-600 mb-5">O item será movido para <strong>dentro</strong> da pasta informada.</p>
+
+        <div class="flex gap-3">
+            <button onclick="closeModals()" class="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-400 hover:bg-slate-800 transition-all text-sm font-bold">Cancelar</button>
+            <button onclick="confirmMove()" class="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white transition-all text-sm font-bold">
+                <i data-lucide="move" class="w-4 h-4 inline mr-1"></i> Mover
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const currentPath = "{{ current }}";
+    const itemsPerPage = 15;
+    let currentPage = 1;
+    const allItemElements = Array.from(document.querySelectorAll('.storage-item'));
+    let filteredItems = [...allItemElements];
+
+    // ── Paginação ──
+    function renderPage() {
+        allItemElements.forEach(i => i.classList.add('hidden'));
+        if (filteredItems.length === 0) { document.getElementById('paginationControls').classList.add('hidden'); return; }
+        const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
+        if (currentPage > totalPages) currentPage = totalPages;
+        if (currentPage < 1) currentPage = 1;
+        const start = (currentPage - 1) * itemsPerPage;
+        for (let i = start; i < start + itemsPerPage && i < filteredItems.length; i++) filteredItems[i].classList.remove('hidden');
+        document.getElementById('pageInfo').innerText = `Página ${currentPage} de ${totalPages} (Total: ${filteredItems.length})`;
+        document.getElementById('btnPrev').disabled = currentPage === 1;
+        document.getElementById('btnNext').disabled = currentPage === totalPages;
+        document.getElementById('paginationControls').classList.toggle('hidden', totalPages <= 1);
+    }
+    function changePage(dir) { currentPage += dir; renderPage(); lucide.createIcons(); }
+    function filterStorage() {
+        const q = document.getElementById('searchInput').value.toLowerCase().trim();
+        filteredItems = allItemElements.filter(i => (i.dataset.name || '').toLowerCase().includes(q));
+        currentPage = 1; renderPage();
+    }
+
+    // ── Modals ──
+    let activeItemPath = '', activeItemName = '';
+
+    function closeModals() {
+        ['modal-mkdir','modal-rename','modal-move'].forEach(id => document.getElementById(id).classList.add('hidden'));
+    }
+
+    function openMkdir() {
+        document.getElementById('mkdir-name').value = '';
+        document.getElementById('modal-mkdir').classList.remove('hidden');
+        setTimeout(() => document.getElementById('mkdir-name').focus(), 50);
+    }
+
+    function openRename(btn) {
+        const row = btn.closest('.storage-item');
+        activeItemPath = row.dataset.path;
+        activeItemName = row.dataset.name;
+        document.getElementById('rename-current-name').innerText = activeItemName;
+        document.getElementById('rename-new-name').value = activeItemName;
+        document.getElementById('modal-rename').classList.remove('hidden');
+        setTimeout(() => { const el = document.getElementById('rename-new-name'); el.focus(); el.select(); }, 50);
+    }
+
+    async function openMove(btn) {
+        const row = btn.closest('.storage-item');
+        activeItemPath = row.dataset.path;
+        activeItemName = row.dataset.name;
+        document.getElementById('move-src-name').innerText = activeItemName;
+        document.getElementById('move-dst').value = '';
+        document.getElementById('modal-move').classList.remove('hidden');
+
+        // Carregar pastas disponíveis
+        const container = document.getElementById('move-folder-btns');
+        container.innerHTML = '<span class="text-slate-600 text-xs italic">Carregando...</span>';
+        try {
+            const r = await fetch('/api/storage/folders');
+            const d = await r.json();
+            container.innerHTML = '';
+            (d.folders || []).forEach(f => {
+                const btn = document.createElement('button');
+                btn.className = 'px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-700 text-slate-300 hover:bg-amber-500/20 hover:border-amber-500 hover:text-amber-300 transition-all';
+                btn.innerText = f;
+                btn.onclick = () => {
+                    document.getElementById('move-dst').value = f;
+                    container.querySelectorAll('button').forEach(b => b.classList.remove('bg-amber-500/20','border-amber-500','text-amber-300'));
+                    btn.classList.add('bg-amber-500/20','border-amber-500','text-amber-300');
+                };
+                container.appendChild(btn);
+            });
+        } catch(e) {
+            container.innerHTML = '<span class="text-red-500 text-xs">Erro ao carregar pastas</span>';
+        }
+
+        setTimeout(() => document.getElementById('move-dst').focus(), 50);
+    }
+
+    // ── Ações ──
+    async function confirmMkdir() {
+        const name = document.getElementById('mkdir-name').value.trim();
+        if (!name) return;
+        const path = (currentPath ? currentPath + '/' : '') + name;
+        const r = await fetch('/api/storage/mkdir', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({path}) });
+        const d = await r.json();
+        if (!r.ok) { alert(d.error || 'Erro ao criar pasta'); return; }
+        location.reload();
+    }
+
+    async function confirmRename() {
+        const newName = document.getElementById('rename-new-name').value.trim();
+        if (!newName || newName === activeItemName) { closeModals(); return; }
+        const r = await fetch('/api/storage/rename', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({path: activeItemPath, new_name: newName}) });
+        const d = await r.json();
+        if (!r.ok) { alert(d.error || 'Erro ao renomear'); return; }
+        location.reload();
+    }
+
+    async function confirmMove() {
+        const dst_dir = document.getElementById('move-dst').value.trim();
+        if (!dst_dir) { alert('Selecione ou digite a pasta de destino.'); return; }
+
+        const btn = document.querySelector('#modal-move button[onclick="confirmMove()"]');
+        btn.disabled = true;
+        btn.innerHTML = '<svg class="animate-spin w-4 h-4 inline mr-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg> Movendo...';
+
+        const r = await fetch('/api/storage/move', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({src: activeItemPath, dst_dir}) });
+        const d = await r.json();
+
+        if (!r.ok) {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="move" class="w-4 h-4 inline mr-1"></i> Mover';
+            lucide.createIcons();
+            alert(d.error || 'Erro ao mover');
+            return;
+        }
+
+        btn.innerHTML = '✓ Movido com sucesso!';
+        btn.classList.replace('bg-amber-600','bg-emerald-600');
+        setTimeout(() => location.reload(), 900);
+    }
+
+    // Fecha modal ao clicar fora
+    ['modal-mkdir','modal-rename','modal-move'].forEach(id => {
+        document.getElementById(id).addEventListener('click', e => { if (e.target === document.getElementById(id)) closeModals(); });
+    });
+
+    renderPage();
+    lucide.createIcons();
+</script>
+
+{% endblock %}

@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div>
+        <h1 class="text-3xl font-bold text-white flex items-center gap-3">
+            <i data-lucide="download-cloud" class="text-blue-500"></i> Fila de Downloads
+        </h1>
+        <p class="text-slate-400">Gerencie e monitore o progresso dos seus arquivos em tempo real.</p>
+    </div>
+    <div class="text-xs font-mono bg-slate-800/50 px-3 py-2 rounded-lg border border-slate-700">
+        REFRESH: 5s
+    </div>
+</div>
+
+<div class="bg-[#111827] border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+    <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+            <thead>
+                <tr class="bg-[#0b0f1a] border-b border-slate-800">
+                    <th class="p-4 text-xs uppercase tracking-widest text-slate-500 font-bold">ID</th>
+                    <th class="p-4 text-xs uppercase tracking-widest text-slate-500 font-bold">Conteúdo</th>
+                    <th class="p-4 text-xs uppercase tracking-widest text-slate-500 font-bold hidden sm:table-cell">Tipo</th>
+                    <th class="p-4 text-xs uppercase tracking-widest text-slate-500 font-bold">Status</th>
+                    <th class="p-4 text-xs uppercase tracking-widest text-slate-500 font-bold">Progresso</th>
+                    <th class="p-4 text-xs uppercase tracking-widest text-slate-500 font-bold hidden lg:table-cell">Criado em</th>
+                    <th class="p-4 text-xs uppercase tracking-widest text-slate-500 font-bold text-center">Ações</th>
+                </tr>
+            </thead>
+            <tbody id="jobsTable" class="divide-y divide-slate-800 text-sm">
+            </tbody>
+        </table>
+    </div>
+    <div id="paginationBar" class="hidden p-4 border-t border-slate-800 bg-[#0b0f1a] flex items-center justify-between">
+        <span id="pageInfo" class="text-xs text-slate-400 font-bold"></span>
+        <div class="flex gap-2">
+            <button id="btnPrev" onclick="changePage(-1)"
+                class="flex items-center gap-1 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition-all disabled:opacity-30">
+                <i data-lucide="chevron-left" class="w-4 h-4"></i> Anterior
+            </button>
+            <button id="btnNext" onclick="changePage(1)"
+                class="flex items-center gap-1 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition-all disabled:opacity-30">
+                Próxima <i data-lucide="chevron-right" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Estilos das Badges de Status */
+    .badge {
+        padding: 4px 10px;
+        border-radius: 9999px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .badge-queued { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.2); }
+    .badge-downloading { background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.2); }
+    .badge-completed { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); }
+    .badge-failed { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
+    .badge-cancelled { background: rgba(100, 116, 139, 0.1); color: #94a3b8; border: 1px solid rgba(100, 116, 139, 0.2); }
+
+    /* Estilo da Barra de Progresso */
+    .progress-track {
+        width: 140px;
+        height: 6px;
+        background: #1e293b;
+        border-radius: 10px;
+        overflow: hidden;
+        position: relative;
+    }
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #3b82f6, #2dd4bf);
+        width: 0%;
+        transition: width 0.5s ease-out;
+        box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+    }
+</style>
+
+<script>
+const PAGE_SIZE = 20;
+let currentPage = 1;
+let allJobs = [];
+
+function buildRow(job) {
+    let progressHTML = `<span class="text-slate-600">---</span>`;
+    let actionHTML = `<span class="text-slate-600 italic text-xs">Sem ações</span>`;
+
+    if (job.status === "downloading") {
+        progressHTML = `
+            <div class="flex items-center gap-3">
+                <div class="progress-track">
+                    <div class="progress-fill" id="bar-${job.id}" style="width:0%"></div>
+                </div>
+                <span class="text-[10px] font-bold text-blue-400" id="text-${job.id}">0%</span>
+            </div>`;
+        actionHTML = `
+            <button onclick="cancelJob(${job.id})" class="flex items-center gap-1 mx-auto bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-3 py-1.5 rounded-lg border border-red-500/20 transition-all text-xs font-bold uppercase">
+                <i data-lucide="trash-2" class="w-3 h-3"></i> Parar
+            </button>`;
+    }
+
+    return `
+        <tr class="hover:bg-slate-800/30 transition-colors">
+            <td class="p-4 font-mono text-slate-500">${job.id}</td>
+            <td class="p-4">
+                <div class="flex flex-col">
+                    <span class="font-bold text-white">${job.series_name}</span>
+                    <span class="text-xs text-slate-500">${job.temporada ? 'Temporada ' + job.temporada : 'Filme Individual'}</span>
+                </div>
+            </td>
+            <td class="p-4 hidden sm:table-cell">
+                <span class="text-xs bg-slate-800 px-2 py-1 rounded text-slate-400 border border-slate-700 font-medium">${job.tipo}</span>
+            </td>
+            <td class="p-4"><span class="badge badge-${job.status}">${job.status}</span></td>
+            <td class="p-4">${progressHTML}</td>
+            <td class="p-4 hidden lg:table-cell text-slate-500 text-xs italic">${job.created_at}</td>
+            <td class="p-4 text-center">${actionHTML}</td>
+        </tr>`;
+}
+
+function renderPage() {
+    const total = allJobs.length;
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+
+    const start = (currentPage - 1) * PAGE_SIZE;
+    const slice = allJobs.slice(start, start + PAGE_SIZE);
+
+    document.getElementById("jobsTable").innerHTML = slice.map(buildRow).join('');
+    lucide.createIcons();
+    updateProgress(slice);
+
+    document.getElementById("pageInfo").innerText =
+        `Página ${currentPage} de ${totalPages} — ${total} jobs no total`;
+
+    document.getElementById("btnPrev").disabled = currentPage === 1;
+    document.getElementById("btnNext").disabled = currentPage === totalPages;
+    document.getElementById("paginationBar").classList.toggle("hidden", totalPages <= 1);
+}
+
+function changePage(dir) {
+    currentPage += dir;
+    renderPage();
+}
+
+function loadJobs() {
+    fetch("/api/jobs")
+        .then(res => res.json())
+        .then(data => {
+            allJobs = data;
+            renderPage();
+        });
+}
+
+function updateProgress(jobs) {
+    jobs.forEach(job => {
+        if (job.status === "downloading") {
+            fetch(`/api/progress/${job.id}`)
+                .then(res => res.json())
+                .then(p => {
+                    const bar = document.getElementById(`bar-${job.id}`);
+                    const text = document.getElementById(`text-${job.id}`);
+                    if (bar) bar.style.width = p.progress + "%";
+                    if (text) text.innerText = Math.round(p.progress) + "%";
+                });
+        }
+    });
+}
+
+function cancelJob(id) {
+    if (!confirm("Tem certeza que deseja cancelar e apagar este download?")) return;
+    fetch(`/api/cancel/${id}`, { method: "POST" }).then(() => loadJobs());
+}
+
+setInterval(loadJobs, 5000);
+loadJobs();
+</script>
+
+{% endblock %}

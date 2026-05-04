@@ -1,0 +1,12 @@
+services:
+  mdm:
+    build: .
+    container_name: mdm-titan
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - /mnt/media:/mnt/media

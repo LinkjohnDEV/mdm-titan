@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MDM Titan V2 | Control</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: #020617;
+        }
+
+        .sidebar-transition {
+            transition: transform 0.3s ease-in-out;
+        }
+
+        .active-link {
+            background: #1e293b;
+            border-left: 4px solid #3b82f6;
+            color: #eff6ff;
+        }
+
+        /* Overlay para o menu mobile */
+        #sidebar-overlay {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        #sidebar-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        @media (max-width: 767px) {
+            .sidebar-mobile-hidden {
+                transform: translateX(-100%);
+            }
+
+            .sidebar-mobile-open {
+                transform: translateX(0);
+            }
+        }
+    </style>
+</head>
+
+<body class="text-slate-200 overflow-x-hidden">
+
+    <div id="sidebar-overlay" onclick="toggleSidebar()" class="fixed inset-0 bg-black/60 z-40 md:hidden"></div>
+
+    <div class="flex">
+        <aside id="sidebar"
+            class="sidebar-transition fixed inset-y-0 left-0 z-50 w-64 bg-[#0b0f1a] border-r border-slate-800 sidebar-mobile-hidden md:translate-x-0 md:static">
+            <div class="flex flex-col h-full">
+                <div class="p-6 flex items-center justify-between">
+                    <div class="flex items-center gap-3 text-blue-500">
+                        <i data-lucide="shield-half" class="w-8 h-8"></i>
+                        <span class="text-xl font-bold tracking-tight text-white uppercase">MDM TITAN</span>
+                    </div>
+                    <button onclick="toggleSidebar()" class="md:hidden text-slate-400">
+                        <i data-lucide="x" class="w-6 h-6"></i>
+                    </button>
+                </div>
+
+                <nav class="flex-1 px-4 space-y-1 overflow-y-auto">
+                    <p class="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Monitor</p>
+                    <a href="/dashboard"
+                        class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition-all">
+                        <i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard
+                    </a>
+                    <a href="/downloads"
+                        class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition-all">
+                        <i data-lucide="cloud-download" class="w-5 h-5"></i> Downloads
+                    </a>
+
+                    <p class="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-6 mb-2">Mídia</p>
+                    <a href="/series"
+                        class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition-all">
+                        <i data-lucide="tv" class="w-5 h-5"></i> Séries
+                    </a>
+                    <a href="/filmes"
+                        class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition-all">
+                        <i data-lucide="clapperboard" class="w-5 h-5"></i> Filmes
+                    </a>
+                    <a href="/desenhos"
+                        class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition-all">
+                        <i data-lucide="wand-2" class="w-5 h-5"></i> Desenhos
+                    </a>
+                    <a href="/animes"
+                        class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition-all">
+                        <i data-lucide="sparkles" class="w-5 h-5"></i> Animes
+                    </a>
+                    <a href="/tendencias"
+                        class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition-all">
+                        <i data-lucide="trending-up" class="w-5 h-5"></i> Tendências
+                    </a>
+                    <a href="/coringa"
+                        class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition-all">
+                        <i data-lucide="zap" class="w-5 h-5"></i> Coringa
+                    </a>
+
+                    <p class="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-6 mb-2">Config</p>
+                    <a href="/storage"
+                        class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition-all">
+                        <i data-lucide="hard-drive" class="w-5 h-5"></i> Storage
+                    </a>
+                    {% if current_role == 'admin' %}
+                    <a href="/webhooks"
+                        class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition-all">
+                        <i data-lucide="webhook" class="w-5 h-5"></i> Webhooks
+                    </a>
+                    <a href="/usuarios"
+                        class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition-all">
+                        <i data-lucide="users" class="w-5 h-5"></i> Usuários
+                    </a>
+                    <a href="/cleanup"
+                        class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition-all">
+                        <i data-lucide="trash-2" class="w-5 h-5"></i> Limpeza Storage
+                    </a>
+                    <a href="/m3u"
+                        class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition-all">
+                        <i data-lucide="upload-cloud" class="w-5 h-5"></i> Atualizar M3U
+                    </a>
+                    {% endif %}
+                </nav>
+
+                <div class="p-4 border-t border-slate-800">
+                    {% if current_user %}
+                    <div class="px-4 py-2 mb-1">
+                        <p class="text-[10px] text-slate-500 uppercase font-bold">Logado como</p>
+                        <p class="text-sm text-white font-semibold">{{ current_user }}</p>
+                    </div>
+                    {% endif %}
+                    <a href="/logout"
+                        class="flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-500/10 transition-all">
+                        <i data-lucide="log-out" class="w-5 h-5"></i> Sair
+                    </a>
+                </div>
+            </div>
+        </aside>
+
+        <main class="flex-1 min-h-screen w-full">
+            <header
+                class="h-16 border-b border-slate-800 bg-[#0b0f1a]/80 backdrop-blur-md flex items-center justify-between px-4 md:px-8 sticky top-0 z-30">
+                <div class="flex items-center gap-4">
+                    <button onclick="toggleSidebar()" class="md:hidden p-2 bg-blue-600 rounded-lg shadow-lg">
+                        <i data-lucide="menu" class="w-5 h-5 text-white"></i>
+                    </button>
+                    <span class="hidden md:block text-sm font-medium text-slate-400 uppercase tracking-widest">MDM
+                        Automation</span>
+                </div>
+
+                <div class="flex items-center gap-4">
+                    <div
+                        class="flex items-center gap-2 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+                        <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                        <span class="text-[10px] font-bold text-emerald-500 uppercase">Engine Online</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="p-4 md:p-8 max-w-7xl mx-auto">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+
+            sidebar.classList.toggle('sidebar-mobile-hidden');
+            sidebar.classList.toggle('sidebar-mobile-open');
+            overlay.classList.toggle('active');
+        }
+
+        // Marcar link ativo
+        document.querySelectorAll('nav a').forEach(link => {
+            if (link.getAttribute('href') === window.location.pathname) {
+                link.classList.add('active-link');
+                link.classList.remove('text-slate-400');
+            }
+        });
+    </script>
+</body>
+
+</html>

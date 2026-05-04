@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="mb-8">
+    <h1 class="text-3xl font-bold text-white flex items-center gap-3">
+        <i data-lucide="sparkles" class="text-pink-500"></i> Gerenciar Animes
+        <span class="text-xs bg-pink-600 px-2 py-0.5 rounded-full uppercase tracking-tighter">Beta</span>
+    </h1>
+    <p class="text-slate-400">Filmes e séries de anime para a biblioteca <code class="text-pink-400">/animes</code>.</p>
+</div>
+
+<!-- Tabs -->
+<div class="flex gap-2 mb-6">
+    <button id="tab-btn-filme" onclick="switchTab('filme')"
+        class="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-pink-600 text-white shadow-lg shadow-pink-600/20">
+        <i data-lucide="clapperboard" class="w-4 h-4"></i> Filme Anime
+    </button>
+    <button id="tab-btn-serie" onclick="switchTab('serie')"
+        class="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-slate-900/60 border border-slate-700 text-slate-400 hover:border-pink-500 hover:text-pink-400">
+        <i data-lucide="layers" class="w-4 h-4"></i> Série Anime
+    </button>
+</div>
+
+<!-- ===== TAB: FILME ===== -->
+<div id="tab-filme">
+    <div class="max-w-4xl mx-auto">
+        <div class="bg-slate-900/60 border border-slate-700/50 rounded-2xl p-6 space-y-6">
+            <div>
+                <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Pesquisar conteúdo</p>
+                <div class="relative">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"></i>
+                    <input type="text" id="search_anime_filme" placeholder="Digite o nome do filme anime..."
+                        class="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-pink-500 transition">
+                </div>
+                <div id="results-anime-filme" class="mt-2 rounded-xl border border-slate-700 bg-slate-800/80 hidden max-h-72 overflow-y-auto divide-y divide-slate-700/50"></div>
+            </div>
+            <div>
+                <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Arquivo selecionado</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-xs text-slate-400 mb-1 block">Nome do Filme</label>
+                        <div class="relative">
+                            <i data-lucide="type" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 w-4 h-4"></i>
+                            <input type="text" id="anime_filme_nome" placeholder="Ex: Demon Slayer: Mugen Train"
+                                class="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-white focus:outline-none focus:border-pink-500 transition text-sm">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 mb-1 block">Link do Arquivo (URL)</label>
+                        <div class="relative">
+                            <i data-lucide="link" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 w-4 h-4"></i>
+                            <input type="text" id="anime_filme_link" placeholder="URL direta..."
+                                class="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-white font-mono text-xs focus:outline-none focus:border-pink-500 transition italic">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <button onclick="startAnimeFilme()"
+                class="w-full bg-gradient-to-r from-pink-600 to-pink-500 hover:from-pink-500 hover:to-pink-400 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all">
+                <i data-lucide="rocket" class="w-5 h-5"></i> INICIAR DOWNLOAD AGORA
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== TAB: SÉRIE ANIME ===== -->
+<div id="tab-serie" class="hidden">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div class="lg:col-span-7 space-y-6">
+            <div class="bg-slate-900/60 border border-slate-700/50 p-6 rounded-2xl space-y-5">
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 mb-2 uppercase">Nome Oficial do Anime</label>
+                    <input type="text" id="as_serieNome" placeholder="Ex: Naruto Shippuden"
+                        class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-pink-500 transition">
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+                    <div class="sm:col-span-1">
+                        <label class="block text-xs font-bold text-slate-400 mb-2 uppercase">Temporada</label>
+                        <input type="number" id="as_temporada" value="1" min="1"
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-pink-500 transition">
+                    </div>
+                    <div class="sm:col-span-3">
+                        <label class="block text-xs font-bold text-pink-400 mb-2 uppercase tracking-tight">Pesquisar Episódios</label>
+                        <div class="relative">
+                            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4"></i>
+                            <input type="text" id="as_buscarInput" placeholder="Digite o nome do episódio..."
+                                class="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-white focus:outline-none focus:border-pink-500 transition">
+                        </div>
+                    </div>
+                </div>
+                <div id="as_resultados" class="rounded-xl border border-slate-700 bg-slate-800/80 hidden max-h-64 overflow-y-auto divide-y divide-slate-700/50"></div>
+                <div id="as_eps_preview_wrap" class="hidden">
+                    <div class="flex justify-between items-center mb-2">
+                        <p class="text-xs font-bold text-pink-400 uppercase tracking-tight">Episódios selecionados para esta temporada</p>
+                        <button onclick="as_limparEpsTemp()" class="text-[10px] text-slate-500 hover:text-red-400 uppercase font-bold transition">Limpar</button>
+                    </div>
+                    <textarea id="as_eps_temp" readonly class="w-full h-24 bg-slate-800/60 border border-slate-700 rounded-xl p-3 text-pink-400 font-mono text-xs resize-none outline-none"></textarea>
+                </div>
+                <button onclick="as_adicionarTemporada()"
+                    class="w-full bg-slate-800 hover:bg-slate-700 border border-pink-500/50 hover:border-pink-500 text-pink-400 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all">
+                    <i data-lucide="plus-circle" class="w-5 h-5"></i> ADICIONAR TEMPORADA À FILA
+                </button>
+            </div>
+        </div>
+        <div class="lg:col-span-5">
+            <div class="bg-slate-900/60 border border-slate-700/50 rounded-2xl flex flex-col h-full overflow-hidden">
+                <div class="p-5 border-b border-slate-700/50 flex justify-between items-center">
+                    <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i data-lucide="layers" class="text-pink-400 w-5 h-5"></i> Temporadas na Fila
+                    </h2>
+                    <button onclick="as_limparFila()" class="text-[10px] text-slate-500 hover:text-red-400 uppercase font-bold transition">Limpar Tudo</button>
+                </div>
+                <div class="p-4 flex-1 overflow-y-auto space-y-3" id="as_fila_list">
+                    <p class="text-slate-500 text-sm italic text-center mt-8">Nenhuma temporada na fila ainda...</p>
+                </div>
+                <div class="p-4 border-t border-slate-700/50">
+                    <div id="as_resumo" class="text-xs text-slate-400 mb-3 hidden"><span id="as_resumo_text"></span></div>
+                    <button onclick="as_iniciarDownload()"
+                        class="w-full bg-gradient-to-r from-pink-600 to-pink-500 hover:from-pink-500 hover:to-pink-400 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all">
+                        <i data-lucide="rocket" class="w-5 h-5"></i> BAIXAR SÉRIE COMPLETA
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function switchTab(tab) {
+        const isFilme = tab === 'filme';
+        document.getElementById('tab-filme').classList.toggle('hidden', !isFilme);
+        document.getElementById('tab-serie').classList.toggle('hidden', isFilme);
+        const active = 'flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-pink-600 text-white shadow-lg shadow-pink-600/20';
+        const inactive = 'flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-slate-900/60 border border-slate-700 text-slate-400 hover:border-pink-500 hover:text-pink-400';
+        document.getElementById('tab-btn-filme').className = isFilme ? active : inactive;
+        document.getElementById('tab-btn-serie').className = isFilme ? inactive : active;
+        lucide.createIcons();
+    }
+
+    // ─── Filme Anime ──────────────────────────────────────────
+    let timerAF;
+    document.getElementById("search_anime_filme").addEventListener("input", function() {
+        clearTimeout(timerAF);
+        const q = this.value.trim(), box = document.getElementById("results-anime-filme");
+        if (q.length < 2) { box.classList.add("hidden"); return; }
+        timerAF = setTimeout(() => {
+            fetch(`/search_anime_filme?q=${encodeURIComponent(q)}`).then(r => r.json()).then(data => {
+                if (!data.length) { box.classList.add("hidden"); return; }
+                box.innerHTML = data.map((item, i) => `
+                    <div onclick="selectAnimeFilme(${i})" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-700 cursor-pointer transition">
+                        ${item.logo ? `<img src="${item.logo}" class="w-8 h-8 rounded object-cover flex-shrink-0" onerror="this.style.display='none'">` : '<div class="w-8 h-8 rounded bg-slate-700 flex-shrink-0"></div>'}
+                        <div class="flex-1 min-w-0"><p class="text-white text-sm truncate">${item.nome}</p><p class="text-slate-500 text-xs truncate">${item.group || ''}</p></div>
+                        <span class="text-xs px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-400">filme</span>
+                    </div>`).join("");
+                box._data = data; box.classList.remove("hidden");
+            });
+        }, 300);
+    });
+    function selectAnimeFilme(i) {
+        const box = document.getElementById("results-anime-filme"), item = box._data[i];
+        document.getElementById("anime_filme_nome").value = item.nome;
+        document.getElementById("anime_filme_link").value = item.link;
+        box.classList.add("hidden"); document.getElementById("search_anime_filme").value = "";
+    }
+    function startAnimeFilme(force = false) {
+        const name = document.getElementById("anime_filme_nome").value, link = document.getElementById("anime_filme_link").value;
+        if (!name || !link) { alert("Preencha o nome e o link antes de iniciar."); return; }
+        fetch("/add_anime_filme", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, link, force }) })
+            .then(async res => { const data = await res.json(); if (res.status === 409) { if (confirm(data.message)) startAnimeFilme(true); return null; } if (!res.ok) { alert(data.message || data.error || "Erro."); return null; } return data; })
+            .then(data => { if (data) window.location.href = "/downloads"; });
+    }
+
+    // ─── Série Anime (fila) ───────────────────────────────────
+    let as_fila = [], as_timer = null, as_ctrl = null;
+
+    document.getElementById("as_buscarInput").addEventListener("input", function() {
+        const termo = this.value.trim(), box = document.getElementById("as_resultados");
+        if (termo.length < 2) { box.classList.add("hidden"); return; }
+        clearTimeout(as_timer);
+        as_timer = setTimeout(() => {
+            if (as_ctrl) as_ctrl.abort(); as_ctrl = new AbortController();
+            fetch("/search_anime_serie?q=" + encodeURIComponent(termo), { signal: as_ctrl.signal })
+                .then(r => r.json()).then(data => {
+                    const items = data.results || [];
+                    if (!items.length) { box.innerHTML = "<p class='text-slate-500 text-sm px-4 py-3 text-center italic'>Nenhum resultado encontrado</p>"; box.classList.remove("hidden"); return; }
+                    box._data = items;
+                    box.innerHTML = items.map((item, i) => `
+                        <div onclick="as_adicionarEp(${i})" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-700 cursor-pointer transition group">
+                            ${item.logo ? `<img src="${item.logo}" class="w-8 h-8 rounded object-cover flex-shrink-0" onerror="this.style.display='none'">` : '<div class="w-8 h-8 rounded bg-slate-700 flex-shrink-0"></div>'}
+                            <div class="flex-1 min-w-0"><p class="text-white text-sm truncate">${item.name}</p><p class="text-slate-500 text-xs truncate">${item.group || ''}</p></div>
+                            <span class="text-pink-400 text-lg font-bold opacity-0 group-hover:opacity-100 transition">+</span>
+                        </div>`).join("");
+                    box.classList.remove("hidden");
+                }).catch(err => { if (err.name !== "AbortError") console.error(err); });
+        }, 300);
+    });
+
+    function as_adicionarEp(i) {
+        const item = document.getElementById("as_resultados")._data[i], ta = document.getElementById("as_eps_temp");
+        if (ta.value.includes(item.url)) return;
+        ta.value += `${item.name}|${item.url}\n`;
+        document.getElementById("as_eps_preview_wrap").classList.remove("hidden");
+    }
+    function as_limparEpsTemp() { document.getElementById("as_eps_temp").value = ""; document.getElementById("as_eps_preview_wrap").classList.add("hidden"); }
+    function as_adicionarTemporada() {
+        const nome = document.getElementById("as_serieNome").value.trim(), temporada = document.getElementById("as_temporada").value.trim(), raw = document.getElementById("as_eps_temp").value.trim();
+        if (!nome) { alert("Preencha o nome do anime."); return; }
+        if (!temporada) { alert("Informe o número da temporada."); return; }
+        if (!raw) { alert("Selecione pelo menos um episódio."); return; }
+        if (as_fila.find(s => s.season === temporada)) { alert(`A Temporada ${temporada} já foi adicionada.`); return; }
+        const episodios = raw.split("\n").filter(l => l.trim()).map(linha => { const [name, url] = linha.split("|"); return { name: name.trim(), url: url.trim() }; });
+        as_fila.push({ season: temporada, episodes: episodios }); as_fila.sort((a, b) => parseInt(a.season) - parseInt(b.season));
+        document.getElementById("as_temporada").value = parseInt(temporada) + 1;
+        as_limparEpsTemp(); document.getElementById("as_buscarInput").value = ""; document.getElementById("as_resultados").classList.add("hidden");
+        as_renderFila();
+    }
+    function as_removerTemporada(season) { as_fila = as_fila.filter(s => s.season !== season); as_renderFila(); }
+    function as_renderFila() {
+        const list = document.getElementById("as_fila_list"), resumo = document.getElementById("as_resumo"), resumoText = document.getElementById("as_resumo_text");
+        if (!as_fila.length) { list.innerHTML = '<p class="text-slate-500 text-sm italic text-center mt-8">Nenhuma temporada na fila ainda...</p>'; resumo.classList.add("hidden"); return; }
+        resumoText.textContent = `${as_fila.length} temporada(s) • ${as_fila.reduce((a, s) => a + s.episodes.length, 0)} episódio(s) no total`; resumo.classList.remove("hidden");
+        list.innerHTML = as_fila.map(s => `
+            <div class="bg-slate-800/60 border border-slate-700/50 rounded-xl px-4 py-3 flex items-center justify-between group">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg bg-pink-600/20 border border-pink-500/30 flex items-center justify-center text-pink-400 font-bold text-sm">T${s.season}</div>
+                    <div><p class="text-white text-sm font-semibold">Temporada ${s.season}</p><p class="text-slate-400 text-xs">${s.episodes.length} episódio(s)</p></div>
+                </div>
+                <button onclick="as_removerTemporada('${s.season}')" class="text-slate-600 hover:text-red-400 transition opacity-0 group-hover:opacity-100">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                </button>
+            </div>`).join('');
+    }
+    function as_limparFila() { if (!as_fila.length) return; if (confirm("Deseja esvaziar a fila?")) { as_fila = []; as_renderFila(); } }
+    function as_iniciarDownload(force = false) {
+        const nome = document.getElementById("as_serieNome").value.trim();
+        if (!nome) { alert("Preencha o nome do anime."); return; }
+        if (!as_fila.length) { alert("Adicione pelo menos uma temporada."); return; }
+        fetch("/add_anime_serie_completa", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nome, seasons: as_fila, force }) })
+            .then(async res => { const data = await res.json(); if (res.status === 409) { if (confirm(data.message)) as_iniciarDownload(true); return null; } if (!res.ok) { alert(data.message || data.error || "Erro."); return null; } return data; })
+            .then(data => { if (data) window.location.href = "/downloads"; });
+    }
+
+    lucide.createIcons();
+</script>
+
+{% endblock %}

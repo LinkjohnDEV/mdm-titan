@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MDM Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background:#0f172a; color:white; font-family:Arial; }
+        .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:20px; }
+        .card {
+            background:#1e293b;
+            padding:20px;
+            border-radius:12px;
+            box-shadow:0 0 15px rgba(0,0,0,0.4);
+        }
+        .big { font-size:28px; font-weight:bold; }
+        .progress {
+            background:#334155;
+            border-radius:10px;
+            overflow:hidden;
+            height:12px;
+            margin-top:10px;
+        }
+        .progress-bar {
+            height:12px;
+            background:#22c55e;
+        }
+    </style>
+</head>
+<body>
+
+<h1>🚀 MDM Dashboard</h1>
+
+<div class="grid">
+    <div class="card"><div>Séries</div><div id="series" class="big">0</div></div>
+    <div class="card"><div>Filmes</div><div id="filmes" class="big">0</div></div>
+    <div class="card"><div>Concluídos</div><div id="completed" class="big">0</div></div>
+    <div class="card"><div>Falhados</div><div id="failed" class="big">0</div></div>
+    <div class="card"><div>Cancelados</div><div id="cancelled" class="big">0</div></div>
+    <div class="card"><div>Webhooks Ativos</div><div id="webhooks" class="big">0</div></div>
+    <div class="card">
+        <div>Espaço em Disco</div>
+        <div id="diskText"></div>
+        <div class="progress">
+            <div id="diskBar" class="progress-bar"></div>
+        </div>
+    </div>
+    <div class="card">
+        <div>Uptime</div>
+        <div id="uptime" class="big"></div>
+    </div>
+</div>
+
+<br><br>
+
+<div class="card">
+    <canvas id="downloadsChart"></canvas>
+</div>
+
+<script>
+async function loadDashboard(){
+    const res = await fetch("/api/dashboard_stats");
+    const data = await res.json();
+
+    series.innerText = data.series;
+    filmes.innerText = data.filmes;
+    completed.innerText = data.completed;
+    failed.innerText = data.failed;
+    cancelled.innerText = data.cancelled;
+    webhooks.innerText = data.webhooks;
+
+    diskText.innerText = data.disk_used_gb + "GB / " + data.disk_total_gb + "GB (" + data.disk_percent + "%)";
+    diskBar.style.width = data.disk_percent + "%";
+
+    uptime.innerText = data.uptime;
+
+    chart.data.datasets[0].data = [data.diario, data.semanal, data.mensal];
+    chart.update();
+}
+
+const ctx = document.getElementById('downloadsChart');
+const chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: ['Diário', 'Semanal', 'Mensal'],
+        datasets: [{
+            label: 'Downloads',
+            data: [0,0,0],
+            backgroundColor: ['#3b82f6','#22c55e','#f59e0b']
+        }]
+    }
+});
+
+loadDashboard();
+setInterval(loadDashboard, 30000);
+</script>
+
+</body>
+</html>
+
+{% endblock %}

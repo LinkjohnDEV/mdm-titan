@@ -1,0 +1,407 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+    /* Barra de rolagem estendida */
+    .custom-scrollbar::-webkit-scrollbar {
+        height: 8px;
+        /* Altura da barra horizontal */
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: rgba(15, 23, 42, 0.5);
+        border-radius: 10px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(51, 65, 85, 0.8);
+        border-radius: 10px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: rgba(71, 85, 105, 1);
+    }
+
+    .custom-scrollbar {
+        scrollbar-width: thin;
+        /* Firefox */
+        scrollbar-color: rgba(51, 65, 85, 0.8) transparent;
+    }
+
+    .rating-circle {
+        background: conic-gradient(var(--fill-color) var(--percent), #1f2937 0deg);
+    }
+
+    .card-zoom {
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .card-zoom:hover {
+        transform: scale(1.02);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+    }
+</style>
+
+<div class="mb-8 flex flex-col md:flex-row md:items-center gap-6">
+    <h1 class="text-3xl font-bold text-white flex items-center gap-3">
+        Tendências
+    </h1>
+
+    <!-- Toggle Button Híbrido -->
+    <div class="inline-flex bg-[#0b0f1a] rounded-full border border-slate-700 p-1 relative z-10 w-fit">
+        <button id="btn-day" onclick="loadTrending('day')"
+            class="relative px-6 py-1.5 text-sm font-bold rounded-full transition-all duration-300 z-20 text-white cursor-pointer bg-slate-800">
+            Hoje
+        </button>
+        <button id="btn-week" onclick="loadTrending('week')"
+            class="relative px-6 py-1.5 text-sm font-bold rounded-full transition-all duration-300 z-20 text-slate-400 cursor-pointer bg-transparent hover:text-white">
+            Nesta Semana
+        </button>
+    </div>
+</div>
+
+<!-- Erro Alert (Invisível por padrão) -->
+<div id="error-box"
+    class="hidden mb-6 bg-red-500/10 border border-red-500/20 text-red-500 p-4 rounded-xl flex items-center gap-3">
+    <i data-lucide="alert-triangle" class="w-5 h-5 shrink-0"></i>
+    <p id="error-msg" class="text-sm font-semibold"></p>
+</div>
+
+<!-- Container do Carrossel de Tendências -->
+<div class="relative w-full">
+    <!-- Efeito de sombra interna pra indicar rolagem no desktop -->
+    <div
+        class="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-[#020617] to-transparent z-10 pointer-events-none hidden md:block">
+    </div>
+
+    <div id="trending-grid" class="flex gap-5 overflow-x-auto custom-scrollbar pb-4 pt-4 px-2 snap-x snap-mandatory">
+
+        <!-- Skeleton Loading padrão enquanto puxa API -->
+        <div class="min-w-[160px] max-w-[160px] md:min-w-[190px] md:max-w-[190px] shrink-0 animate-pulse">
+            <div class="w-full h-[60%] md:h-[285px] bg-slate-800 rounded-xl mb-6 shadow-lg"></div>
+            <div class="w-3/4 h-4 bg-slate-800 rounded mb-2"></div>
+            <div class="w-1/2 h-3 bg-slate-800 rounded"></div>
+        </div>
+        <div
+            class="min-w-[160px] max-w-[160px] md:min-w-[190px] md:max-w-[190px] shrink-0 animate-pulse hidden sm:block">
+            <div class="w-full h-[60%] md:h-[285px] bg-slate-800 rounded-xl mb-6 shadow-lg"></div>
+            <div class="w-3/4 h-4 bg-slate-800 rounded mb-2"></div>
+            <div class="w-1/2 h-3 bg-slate-800 rounded"></div>
+        </div>
+        <div
+            class="min-w-[160px] max-w-[160px] md:min-w-[190px] md:max-w-[190px] shrink-0 animate-pulse hidden md:block">
+            <div class="w-full h-[60%] md:h-[285px] bg-slate-800 rounded-xl mb-6 shadow-lg"></div>
+            <div class="w-3/4 h-4 bg-slate-800 rounded mb-2"></div>
+            <div class="w-1/2 h-3 bg-slate-800 rounded"></div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ========================================================= -->
+<!-- OS MAIS POPULARES -->
+<!-- ========================================================= -->
+
+<div class="mt-12 mb-8 flex flex-col xl:flex-row xl:items-center gap-6">
+    <h1 class="text-3xl font-bold text-white flex items-center gap-3">
+        Os Mais Populares
+    </h1>
+
+    <div
+        class="inline-flex bg-[#0b0f1a] rounded-full border border-slate-700 p-1 relative z-10 w-fit overflow-x-auto max-w-full">
+        <button id="btn-pop-streaming" onclick="loadPopular('streaming')"
+            class="relative px-6 py-1.5 text-sm font-bold rounded-full transition-all duration-300 z-20 text-white cursor-pointer bg-slate-800 whitespace-nowrap">
+            Streaming
+        </button>
+        <button id="btn-pop-tv" onclick="loadPopular('tv')"
+            class="relative px-6 py-1.5 text-sm font-bold rounded-full transition-all duration-300 z-20 text-slate-400 cursor-pointer bg-transparent hover:text-white whitespace-nowrap">
+            Na TV
+        </button>
+        <button id="btn-pop-rent" onclick="loadPopular('rent')"
+            class="relative px-6 py-1.5 text-sm font-bold rounded-full transition-all duration-300 z-20 text-slate-400 cursor-pointer bg-transparent hover:text-white whitespace-nowrap">
+            Para Alugar
+        </button>
+        <button id="btn-pop-theaters" onclick="loadPopular('theaters')"
+            class="relative px-6 py-1.5 text-sm font-bold rounded-full transition-all duration-300 z-20 text-slate-400 cursor-pointer bg-transparent hover:text-white whitespace-nowrap">
+            Nos Cinemas
+        </button>
+    </div>
+</div>
+
+<div class="relative w-full">
+    <div
+        class="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-[#020617] to-transparent z-10 pointer-events-none hidden md:block">
+    </div>
+    <div id="popular-grid" class="flex gap-5 overflow-x-auto custom-scrollbar pb-4 pt-4 px-2 snap-x snap-mandatory">
+        <!-- Skeleton Loading padrão -->
+        <div class="min-w-[160px] max-w-[160px] md:min-w-[190px] md:max-w-[190px] shrink-0 animate-pulse">
+            <div class="w-full h-[60%] md:h-[285px] bg-slate-800 rounded-xl mb-6 shadow-lg"></div>
+        </div>
+        <div
+            class="min-w-[160px] max-w-[160px] md:min-w-[190px] md:max-w-[190px] shrink-0 animate-pulse hidden sm:block">
+            <div class="w-full h-[60%] md:h-[285px] bg-slate-800 rounded-xl mb-6 shadow-lg"></div>
+        </div>
+        <div
+            class="min-w-[160px] max-w-[160px] md:min-w-[190px] md:max-w-[190px] shrink-0 animate-pulse hidden md:block">
+            <div class="w-full h-[60%] md:h-[285px] bg-slate-800 rounded-xl mb-6 shadow-lg"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentWindow = 'day';
+
+    function setToggleActive(activeId) {
+        const btnDay = document.getElementById('btn-day');
+        const btnWeek = document.getElementById('btn-week');
+
+        if (activeId === 'day') {
+            btnDay.classList.add('bg-slate-800', 'text-white');
+            btnDay.classList.remove('bg-transparent', 'text-slate-400');
+
+            btnWeek.classList.remove('bg-slate-800', 'text-white');
+            btnWeek.classList.add('bg-transparent', 'text-slate-400');
+        } else {
+            btnWeek.classList.add('bg-slate-800', 'text-white');
+            btnWeek.classList.remove('bg-transparent', 'text-slate-400');
+
+            btnDay.classList.remove('bg-slate-800', 'text-white');
+            btnDay.classList.add('bg-transparent', 'text-slate-400');
+        }
+    }
+
+    // Retorna { label, color } com base nos metadados TMDB
+    function getMediaBadge(item, isTV) {
+        const genres = item.genre_ids || [];
+        const isAnimation = genres.includes(16);
+        const isAnime = isAnimation && (
+            (item.origin_country && item.origin_country.includes('JP')) ||
+            item.original_language === 'ja'
+        );
+        const isFamilyKids = genres.includes(10751) || genres.includes(10762);
+
+        if (isAnime) {
+            return { label: 'Anime', color: 'bg-red-600' };
+        }
+        if (isTV) {
+            if (isAnimation) return { label: 'Série Animada', color: 'bg-pink-600' };
+            return { label: 'Série', color: 'bg-purple-600' };
+        }
+        // Filme
+        if (isAnimation || isFamilyKids) return { label: 'Desenho', color: 'bg-emerald-600' };
+        return { label: 'Filme', color: 'bg-blue-600' };
+    }
+
+    function getRatingColor(percent) {
+        if (percent >= 70) return '#10b981'; // Emerald/Verde TMDB
+        if (percent >= 50) return '#eab308'; // Amarelo
+        if (percent > 0) return '#ef4444';   // Vermelho
+        return '#64748b';                    // Cinza neutro sem voto
+    }
+
+    function formatDate(dateString) {
+        if (!dateString) return '';
+        try {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+        } catch { return dateString; }
+    }
+
+    async function loadTrending(windowType) {
+        if (windowType === currentWindow && document.getElementById('trending-grid').children.length > 5) return;
+
+        currentWindow = windowType;
+        setToggleActive(windowType);
+
+        const grid = document.getElementById('trending-grid');
+        const errorBox = document.getElementById('error-box');
+        const errorMsg = document.getElementById('error-msg');
+
+        errorBox.classList.add('hidden');
+
+        // Mostra skeleton simples
+        grid.innerHTML = `
+        <div class="min-w-[160px] max-w-[160px] md:min-w-[190px] md:max-w-[190px] shrink-0 animate-pulse"><div class="w-full h-[60%] md:h-[285px] bg-slate-800 rounded-xl mb-6 shadow-lg"></div></div>
+        <div class="min-w-[160px] max-w-[160px] md:min-w-[190px] md:max-w-[190px] shrink-0 animate-pulse"><div class="w-full h-[60%] md:h-[285px] bg-slate-800 rounded-xl mb-6 shadow-lg"></div></div>
+        <div class="min-w-[160px] max-w-[160px] md:min-w-[190px] md:max-w-[190px] shrink-0 animate-pulse"><div class="w-full h-[60%] md:h-[285px] bg-slate-800 rounded-xl mb-6 shadow-lg"></div></div>
+    `;
+
+        try {
+            const response = await fetch(`/api/tendencias/${windowType}`);
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Falha na comunicação com a API do TMDB.");
+            }
+
+            if (!data.results || data.results.length === 0) {
+                grid.innerHTML = '<p class="text-slate-500 italic p-4">Nenhuma tendência encontrada.</p>';
+                return;
+            }
+
+            grid.innerHTML = ''; // Clear skeleton
+
+            data.results.forEach(item => {
+                // No caso de TVs, a api usa "name" e "first_air_date". Em Filmes, usa "title" e "release_date"
+                const title = item.title || item.name;
+                const release = item.release_date || item.first_air_date;
+                const posterPath = item.poster_path;
+                const ratingPercent = Math.round((item.vote_average || 0) * 10); // ex: 8.5 virar 85
+                const ratingColor = getRatingColor(ratingPercent);
+
+                // TMDB Image Base URL (w500 size defaults perfectly for poster cards)
+                const imgUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : '/static/img/no-poster.png';
+
+                // Tipo de Mídia Badge
+                const isTV = item.media_type === "tv" || !item.title;
+                const { label: badgeLabel, color: badgeColor } = getMediaBadge(item, isTV);
+
+                // Construção do Pôster
+                const card = document.createElement('div');
+                card.className = "min-w-[160px] max-w-[160px] md:min-w-[190px] md:max-w-[190px] shrink-0 snap-start flex flex-col";
+
+                card.innerHTML = `
+                <div class="relative w-full aspect-[2/3] rounded-xl overflow-visible mb-6 card-zoom cursor-pointer" onclick="alert('Funcionalidade de Adicionar do TMDB em breve!')">
+                    <!-- Sombra da borda do cartaz original -->
+                    <img src="${imgUrl}" alt="${title}" class="w-full h-full object-cover rounded-xl shadow-lg border border-slate-800/80 bg-slate-900" loading="lazy">
+                    
+                    <!-- Selo de Tipo de Mídia (Filme/Série) -->
+                    <div class="absolute top-2 right-2 ${badgeColor} text-white font-bold text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full shadow-md z-10 backdrop-blur-sm bg-opacity-90 border border-white/10">
+                        ${badgeLabel}
+                    </div>
+                    
+                    <!-- Círculo de Nota de TMDB Style flutuando na borda inferior -->
+                    <div class="absolute -bottom-5 left-3 w-10 h-10 rounded-full bg-[#081c22] flex items-center justify-center p-[2px] shadow-xl border-2 border-slate-900 z-20">
+                        <div class="w-full h-full rounded-full flex items-center justify-center rating-circle text-[10px] sm:text-xs font-bold text-white relative" style="--percent: ${ratingPercent}%; --fill-color: ${ratingColor};">
+                            <!-- Fundo de contraste central para esconder a fatia interna da pizza de gradient -->
+                            <div class="absolute inset-1 bg-[#081c22] rounded-full z-0 flex items-center justify-center">
+                                ${ratingPercent > 0 ? `<div class="z-10 flex items-start">${ratingPercent}<span class="text-[6px] mt-[1px]">%</span></div>` : '<span class="text-[10px] text-slate-500 z-10">NR</span>'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <h3 class="font-bold text-sm sm:text-base text-white leading-tight mt-1 line-clamp-2 px-1 hover:text-blue-400 cursor-pointer transition-colors">${title}</h3>
+                <p class="text-xs sm:text-sm text-slate-400 px-1 mt-1">${formatDate(release)}</p>
+            `;
+
+                grid.appendChild(card);
+            });
+
+        } catch (err) {
+            grid.innerHTML = '';
+            errorMsg.innerText = err.message || "Erro desconhecido.";
+            errorBox.classList.remove('hidden');
+        }
+    }
+
+    // ==========================================
+    // LÓGICA DE POPULARES
+    // ==========================================
+
+    let currentPopCategory = 'streaming';
+
+    function setPopToggleActive(activeId) {
+        const btns = ['streaming', 'tv', 'rent', 'theaters'];
+        btns.forEach(id => {
+            const el = document.getElementById('btn-pop-' + id);
+            if (id === activeId) {
+                el.classList.add('bg-slate-800', 'text-white');
+                el.classList.remove('bg-transparent', 'text-slate-400');
+            } else {
+                el.classList.remove('bg-slate-800', 'text-white');
+                el.classList.add('bg-transparent', 'text-slate-400');
+            }
+        });
+    }
+
+    async function loadPopular(category) {
+        if (category === currentPopCategory && document.getElementById('popular-grid').children.length > 5) return;
+
+        currentPopCategory = category;
+        setPopToggleActive(category);
+
+        const grid = document.getElementById('popular-grid');
+        const errorBox = document.getElementById('error-box'); // Reusing the same error UI
+        const errorMsg = document.getElementById('error-msg');
+
+        grid.innerHTML = `
+            <div class="min-w-[160px] max-w-[160px] md:min-w-[190px] md:max-w-[190px] shrink-0 animate-pulse"><div class="w-full h-[60%] md:h-[285px] bg-slate-800 rounded-xl mb-6 shadow-lg"></div></div>
+            <div class="min-w-[160px] max-w-[160px] md:min-w-[190px] md:max-w-[190px] shrink-0 animate-pulse"><div class="w-full h-[60%] md:h-[285px] bg-slate-800 rounded-xl mb-6 shadow-lg"></div></div>
+            <div class="min-w-[160px] max-w-[160px] md:min-w-[190px] md:max-w-[190px] shrink-0 animate-pulse"><div class="w-full h-[60%] md:h-[285px] bg-slate-800 rounded-xl mb-6 shadow-lg"></div></div>
+        `;
+
+        try {
+            const response = await fetch(`/api/populares/${category}`);
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Falha na comunicação com a API do TMDB (Populares).");
+            }
+
+            if (!data.results || data.results.length === 0) {
+                grid.innerHTML = '<p class="text-slate-500 italic p-4">Nenhum resultado popular encontrado.</p>';
+                return;
+            }
+
+            grid.innerHTML = '';
+
+            data.results.forEach(item => {
+                const title = item.title || item.name;
+                const release = item.release_date || item.first_air_date;
+                const posterPath = item.poster_path;
+                const ratingPercent = Math.round((item.vote_average || 0) * 10);
+                const ratingColor = getRatingColor(ratingPercent);
+
+                const imgUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : '/static/img/no-poster.png';
+
+                // Determina Tipo de Midia baseada na subcategoria quando não explícito
+                let mediaTypeIsTv = false;
+                if (item.media_type === "tv") mediaTypeIsTv = true;
+                else if (category === "tv") mediaTypeIsTv = true;
+                else if (!item.title && item.name) mediaTypeIsTv = true;
+
+                const { label: badgeLabel, color: badgeColor } = getMediaBadge(item, mediaTypeIsTv);
+
+                const card = document.createElement('div');
+                card.className = "min-w-[160px] max-w-[160px] md:min-w-[190px] md:max-w-[190px] shrink-0 snap-start flex flex-col";
+
+                card.innerHTML = `
+                    <div class="relative w-full aspect-[2/3] rounded-xl overflow-visible mb-6 card-zoom cursor-pointer" onclick="alert('Funcionalidade de Adicionar do TMDB em breve!')">
+                        <img src="${imgUrl}" alt="${title}" class="w-full h-full object-cover rounded-xl shadow-lg border border-slate-800/80 bg-slate-900" loading="lazy">
+                        
+                        <!-- Selo de Tipo de Mídia -->
+                        <div class="absolute top-2 right-2 ${badgeColor} text-white font-bold text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full shadow-md z-10 backdrop-blur-sm bg-opacity-90 border border-white/10">
+                            ${badgeLabel}
+                        </div>
+                        
+                        <div class="absolute -bottom-5 left-3 w-10 h-10 rounded-full bg-[#081c22] flex items-center justify-center p-[2px] shadow-xl border-2 border-slate-900 z-20">
+                            <div class="w-full h-full rounded-full flex items-center justify-center rating-circle text-[10px] sm:text-xs font-bold text-white relative" style="--percent: ${ratingPercent}%; --fill-color: ${ratingColor};">
+                                <div class="absolute inset-1 bg-[#081c22] rounded-full z-0 flex items-center justify-center">
+                                    ${ratingPercent > 0 ? `<div class="z-10 flex items-start">${ratingPercent}<span class="text-[6px] mt-[1px]">%</span></div>` : '<span class="text-[10px] text-slate-500 z-10">NR</span>'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <h3 class="font-bold text-sm sm:text-base text-white leading-tight mt-1 line-clamp-2 px-1 hover:text-blue-400 cursor-pointer transition-colors">${title}</h3>
+                    <p class="text-xs sm:text-sm text-slate-400 px-1 mt-1">${formatDate(release)}</p>
+                `;
+
+                grid.appendChild(card);
+            });
+
+        } catch (err) {
+            grid.innerHTML = '';
+            errorMsg.innerText = err.message || "Erro desconhecido em Populares.";
+            errorBox.classList.remove('hidden');
+        }
+    }
+
+    // Inicia as chamadas padrões das duas fileiras TMDB
+    document.addEventListener("DOMContentLoaded", () => {
+        loadTrending('day');
+        loadPopular('streaming');
+    });
+</script>
+
+{% endblock %}

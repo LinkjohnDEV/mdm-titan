@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="mb-8">
+    <h1 class="text-3xl font-bold text-white flex items-center gap-3">
+        <i data-lucide="clapperboard" class="text-blue-500"></i> Adicionar Filme
+    </h1>
+    <p class="text-slate-400">Pesquise no banco de dados e inicie o download instantaneamente.</p>
+</div>
+
+<div class="max-w-4xl mx-auto">
+    <div class="bg-slate-900/60 border border-slate-700/50 rounded-2xl p-6 space-y-6">
+
+        <div>
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Pesquisar conteúdo</p>
+            <div class="relative">
+                <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"></i>
+                <input type="text" id="search_movie" placeholder="Digite o nome do filme..."
+                    class="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition">
+            </div>
+            <div id="results" class="mt-2 rounded-xl border border-slate-700 bg-slate-800/80 hidden max-h-72 overflow-y-auto divide-y divide-slate-700/50"></div>
+        </div>
+
+        <div>
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Arquivo selecionado</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="text-xs text-slate-400 mb-1 block">Nome do Filme</label>
+                    <div class="relative">
+                        <i data-lucide="type" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 w-4 h-4"></i>
+                        <input type="text" id="movie_name" placeholder="Ex: Avatar: O Caminho da Água"
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition text-sm">
+                    </div>
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400 mb-1 block">Link do Arquivo (URL)</label>
+                    <div class="relative">
+                        <i data-lucide="link" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 w-4 h-4"></i>
+                        <input type="text" id="movie_link" placeholder="URL direta..."
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-white font-mono text-xs focus:outline-none focus:border-blue-500 transition italic">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button onclick="startMovie()"
+            class="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all">
+            <i data-lucide="rocket" class="w-5 h-5"></i> INICIAR DOWNLOAD AGORA
+        </button>
+
+    </div>
+</div>
+
+<script>
+    let searchTimer;
+    document.getElementById("search_movie").addEventListener("input", function() {
+        clearTimeout(searchTimer);
+        const q = this.value.trim();
+        const box = document.getElementById("results");
+        if (q.length < 2) { box.classList.add("hidden"); return; }
+        searchTimer = setTimeout(() => {
+            fetch(`/search_filme?q=${encodeURIComponent(q)}`)
+                .then(r => r.json())
+                .then(data => renderResults(data, box));
+        }, 300);
+    });
+
+    function renderResults(data, box) {
+        if (!data.length) { box.classList.add("hidden"); return; }
+        box.innerHTML = data.map((item, i) => `
+            <div onclick="selectItem(${i})" data-i="${i}"
+                class="flex items-center gap-3 px-4 py-3 hover:bg-slate-700 cursor-pointer transition">
+                ${item.logo ? `<img src="${item.logo}" class="w-8 h-8 rounded object-cover flex-shrink-0" onerror="this.style.display='none'">` : '<div class="w-8 h-8 rounded bg-slate-700 flex-shrink-0"></div>'}
+                <div class="flex-1 min-w-0">
+                    <p class="text-white text-sm truncate">${item.nome}</p>
+                    <p class="text-slate-500 text-xs truncate">${item.group || ''}</p>
+                </div>
+                <span class="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400">filme</span>
+            </div>
+        `).join("");
+        box._data = data;
+        box.classList.remove("hidden");
+        lucide.createIcons();
+    }
+
+    function selectItem(i) {
+        const box = document.getElementById("results");
+        const item = box._data[i];
+        document.getElementById("movie_name").value = item.nome;
+        document.getElementById("movie_link").value = item.link;
+        box.classList.add("hidden");
+        document.getElementById("search_movie").value = "";
+    }
+
+    function startMovie(force = false) {
+        const name = document.getElementById("movie_name").value;
+        const link = document.getElementById("movie_link").value;
+        if (!name || !link) { alert("Selecione um filme ou preencha o nome e link."); return; }
+        fetch("/add_filme", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, link, force })
+        }).then(async res => {
+            const data = await res.json();
+            if (res.status === 409) { if (confirm(data.message)) startMovie(true); return null; }
+            if (!res.ok) { alert(data.message || data.error || "Erro ao adicionar."); return null; }
+            return data;
+        }).then(data => { if (data) window.location.href = "/downloads"; });
+    }
+
+    lucide.createIcons();
+</script>
+
+{% endblock %}

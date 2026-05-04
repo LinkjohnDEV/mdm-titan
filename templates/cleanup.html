@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="mb-8">
+    <h1 class="text-3xl font-bold text-white flex items-center gap-3">
+        <i data-lucide="trash-2" class="text-red-500"></i> Limpeza Storage
+    </h1>
+    <p class="text-slate-400 mt-2">Remova arquivos residuais como <span
+            class="text-slate-300 font-mono text-xs">download.log</span>, <span
+            class="text-slate-300 font-mono text-xs">links.txt</span> e downloads incompletos (<span
+            class="text-slate-300 font-mono text-xs">*.part</span>).</p>
+</div>
+
+<div class="bg-[#111827] border border-slate-800 rounded-2xl p-6 md:p-10 max-w-2xl mx-auto shadow-2xl text-center">
+
+    <div id="cleanupIdle" class="flex flex-col items-center justify-center">
+        <div
+            class="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mb-6 border border-red-500/20">
+            <i data-lucide="scan" class="w-12 h-12 text-red-500"></i>
+        </div>
+        <h3 class="text-xl font-bold text-white mb-2">Escanear Lixo</h3>
+        <p class="text-sm text-slate-400 mb-8 max-w-md">O sistema irá varrer todas as pastas dentro de <b>/mnt/media</b>
+            procurando por sobras de downloads antigos e falhos.</p>
+
+        <button id="startScanBtn" onclick="runCleanup()"
+            class="flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 text-white font-bold px-8 py-4 rounded-xl transition-all shadow-lg shadow-red-600/20 active:scale-[0.98] w-full max-w-xs mx-auto">
+            <i data-lucide="trash-2" class="w-5 h-5"></i>
+            Iniciar Limpeza Geral
+        </button>
+    </div>
+
+    <!-- Interface Ativa (Durante Limpeza) -->
+    <div id="cleanupActive" class="hidden flex-col items-center justify-center py-6">
+        <i data-lucide="loader-2" class="w-16 h-16 text-red-500 animate-spin mb-6"></i>
+        <h3 class="text-xl font-bold text-white mb-2">Limpando Arquivos...</h3>
+        <p class="text-sm text-slate-400 mb-6">Procurando e excluindo arquivos inúteis. Isso pode levar alguns minutos
+            em armazenamentos muito grandes.</p>
+
+        <div class="w-full max-w-md mx-auto bg-slate-800 rounded-full h-2.5 overflow-hidden mb-2">
+            <div id="cleanupProgress" class="bg-red-500 h-2.5 rounded-full"
+                style="width: 100%; transition: width 0.5s ease-in-out;"></div>
+        </div>
+        <p id="cleanupFile" class="text-xs font-mono text-slate-500 h-4 truncate w-full max-w-md mx-auto">Verificando
+            arquivos...</p>
+    </div>
+
+    <!-- Interface Conclusão -->
+    <div id="cleanupDone" class="hidden flex-col items-center justify-center">
+        <div
+            class="w-24 h-24 bg-emerald-500/10 rounded-full flex items-center justify-center mb-6 border border-emerald-500/20">
+            <i data-lucide="check-circle" class="w-12 h-12 text-emerald-500"></i>
+        </div>
+        <h3 class="text-xl font-bold text-emerald-500 mb-2">Limpeza Concluída!</h3>
+        <div class="bg-slate-800/50 rounded-xl p-4 inline-flex gap-8 mb-8 border border-slate-700">
+            <div>
+                <p class="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Arquivos Excluídos</p>
+                <p id="totalDeleted" class="text-2xl font-black text-white">0</p>
+            </div>
+            <div>
+                <p class="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Pastas Excluídas</p>
+                <p id="totalDeletedDirs" class="text-2xl font-black text-white">0</p>
+            </div>
+            <div>
+                <p class="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Espaço Liberado</p>
+                <p id="totalSpace" class="text-2xl font-black text-white">0 MB</p>
+            </div>
+        </div>
+
+        <button onclick="resetCleanup()"
+            class="text-slate-400 hover:text-white transition-colors text-sm font-bold flex items-center gap-2 mx-auto">
+            <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Limpar Novamente
+        </button>
+    </div>
+</div>
+
+<script>
+    let cleanupInterval = null;
+
+    function runCleanup() {
+        document.getElementById('cleanupIdle').classList.add('hidden');
+        document.getElementById('cleanupDone').classList.add('hidden');
+        document.getElementById('cleanupActive').classList.replace('hidden', 'flex');
+
+        fetch('/api/run_cleanup', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    document.getElementById('cleanupActive').classList.replace('flex', 'hidden');
+                    alert('Erro na limpeza: ' + data.error);
+                    resetCleanup();
+                } else {
+                    pollCleanupStatus();
+                }
+            })
+            .catch(err => {
+                alert('Erro ao iniciar a limpeza: ' + err.message);
+                resetCleanup();
+            });
+    }
+
+    function pollCleanupStatus() {
+        if (cleanupInterval) clearInterval(cleanupInterval);
+        cleanupInterval = setInterval(() => {
+            fetch('/api/cleanup_status')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) {
+                        clearInterval(cleanupInterval);
+                        alert('Erro na limpeza: ' + data.error);
+                        resetCleanup();
+                        return;
+                    }
+                    if (data.running) {
+                        if (data.current_file) {
+                            document.getElementById('cleanupFile').innerText = 'Verificando: ' + data.current_file;
+                        }
+                    } else {
+                        clearInterval(cleanupInterval);
+                        document.getElementById('cleanupActive').classList.replace('flex', 'hidden');
+                        document.getElementById('cleanupDone').classList.replace('hidden', 'flex');
+                        document.getElementById('totalDeleted').innerText = data.deleted_count || 0;
+                        document.getElementById('totalDeletedDirs').innerText = data.deleted_dirs || 0;
+                        document.getElementById('totalSpace').innerText = (data.freed_space_mb || 0) + ' MB';
+                    }
+                })
+                .catch(err => {
+                    console.error("Erro ao verificar status da limpeza:", err);
+                });
+        }, 1000);
+    }
+
+    function resetCleanup() {
+        if (cleanupInterval) clearInterval(cleanupInterval);
+        document.getElementById('cleanupDone').classList.replace('flex', 'hidden');
+        document.getElementById('cleanupActive').classList.replace('flex', 'hidden');
+        document.getElementById('cleanupIdle').classList.remove('hidden');
+    }
+</script>
+
+{% endblock %}
