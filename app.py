@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, session, jsonify
 import os
 import shutil
 import hashlib
+import json
 from functools import wraps
 import requests
 from datetime import datetime
@@ -1278,6 +1279,34 @@ def webhooks_page():
     return render_template("webhooks.html")
 
 
+# =========================================================
+# ======================== UPDATES ========================
+# =========================================================
+
+@app.route("/updates")
+@login_required
+def updates_page():
+    return render_template("updates.html")
+
+
+@app.route("/api/updates", methods=["GET"])
+def listar_updates():
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("SELECT id, title, body, created_at FROM updates ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        for r in rows:
+            if hasattr(r["created_at"], "isoformat"):
+                r["created_at"] = r["created_at"].isoformat()
+        return jsonify(rows)
+    except Exception as e:
+        return {"error": str(e)}, 500
+    finally:
+        if 'cursor' in locals() and cursor: cursor.close()
+        if 'conn' in locals() and conn: conn.close()
+
+
 @app.route("/api/webhooks", methods=["GET"])
 def listar_webhooks():
     try:
@@ -1303,12 +1332,42 @@ def listar_webhooks():
 @app.route("/api/webhooks", methods=["POST"])
 def criar_webhook():
     try:
-        data = request.json
+        data = request.json or {}
+        nome = (data.get("nome") or "").strip()
+        tipo = (data.get("tipo") or "generic").strip().lower()
+        if not nome:
+            return {"error": "Nome é obrigatório"}, 400
+        if tipo not in ("generic", "whatsapp"):
+            return {"error": "Tipo inválido"}, 400
+
+        url_val = None
+        config_val = None
+
+        if tipo == "generic":
+            url_val = (data.get("url") or "").strip()
+            if not url_val:
+                return {"error": "URL é obrigatória para webhook genérico"}, 400
+        else:  # whatsapp
+            cfg = data.get("config") or {}
+            server = (cfg.get("server") or "").strip().rstrip("/")
+            instance = (cfg.get("instance") or "").strip()
+            api_key = (cfg.get("api_key") or "").strip()
+            destinos = [d.strip() for d in (cfg.get("destinos") or []) if d and d.strip()]
+            if not server or not instance or not api_key or not destinos:
+                return {"error": "WhatsApp: server, instance, api_key e ao menos 1 destino são obrigatórios"}, 400
+            url_val = f"{server}/message/sendText/{instance}"
+            config_val = json.dumps({
+                "server": server,
+                "instance": instance,
+                "api_key": api_key,
+                "destinos": destinos,
+            })
+
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO webhooks (nome, url, ativo) VALUES (%s,%s,TRUE)",
-            (data["nome"], data["url"])
+            "INSERT INTO webhooks (nome, url, tipo, config, ativo) VALUES (%s,%s,%s,%s,TRUE)",
+            (nome, url_val, tipo, config_val),
         )
         conn.commit()
         return {"status": "ok"}
@@ -1342,6 +1401,62 @@ def delete_webhook(id):
     return {"status": "ok"}
 
 
+@app.route("/api/webhooks/<int:id>", methods=["PUT"])
+def editar_webhook(id):
+    try:
+        data = request.json or {}
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("SELECT tipo FROM webhooks WHERE id=%s", (id,))
+        row = cursor.fetchone()
+        if not row:
+            cursor.close()
+            conn.close()
+            return {"error": "Webhook não encontrado"}, 404
+        tipo = row["tipo"] or "generic"
+
+        nome = (data.get("nome") or "").strip()
+        if not nome:
+            return {"error": "Nome é obrigatório"}, 400
+
+        if tipo == "generic":
+            url_val = (data.get("url") or "").strip()
+            if not url_val:
+                return {"error": "URL é obrigatória"}, 400
+            cursor.execute(
+                "UPDATE webhooks SET nome=%s, url=%s WHERE id=%s",
+                (nome, url_val, id),
+            )
+        else:  # whatsapp
+            cfg = data.get("config") or {}
+            server = (cfg.get("server") or "").strip().rstrip("/")
+            instance = (cfg.get("instance") or "").strip()
+            api_key = (cfg.get("api_key") or "").strip()
+            destinos = [d.strip() for d in (cfg.get("destinos") or []) if d and d.strip()]
+            if not server or not instance or not api_key or not destinos:
+                return {"error": "WhatsApp: server, instance, api_key e ao menos 1 destino são obrigatórios"}, 400
+            url_val = f"{server}/message/sendText/{instance}"
+            config_val = json.dumps({
+                "server": server,
+                "instance": instance,
+                "api_key": api_key,
+                "destinos": destinos,
+            })
+            cursor.execute(
+                "UPDATE webhooks SET nome=%s, url=%s, config=%s WHERE id=%s",
+                (nome, url_val, config_val, id),
+            )
+
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        if 'conn' in locals() and conn: conn.rollback()
+        return {"error": str(e)}, 500
+    finally:
+        if 'cursor' in locals() and cursor: cursor.close()
+        if 'conn' in locals() and conn: conn.close()
+
+
 @app.route("/api/webhooks/<int:id>/test", methods=["POST"])
 def testar_webhook(id):
     conn = get_connection()
@@ -1350,27 +1465,55 @@ def testar_webhook(id):
     hook = cursor.fetchone()
 
     if not hook:
+        cursor.close()
+        conn.close()
         return {"error": "Webhook não encontrado"}, 404
 
+    tipo = hook.get("tipo") or "generic"
+    msg = "🧪 Teste enviado pelo MDM"
+    last_code = 0
+    any_success = False
+
     try:
-        response = requests.post(
-            hook["url"],
-            json={"content": "🧪 Teste enviado pelo MDM"},
-            timeout=5
-        )
-
-        status = "success" if response.status_code < 400 else "error"
-
-        cursor.execute("""
-            UPDATE webhooks
-            SET ultima_execucao=%s,
-                ultimo_status=%s,
-                ultimo_codigo=%s
-            WHERE id=%s
-        """, (datetime.now(), status, response.status_code, id))
-
-        conn.commit()
-        return {"status": "ok"}
+        if tipo == "whatsapp":
+            cfg = hook.get("config") or {}
+            server = (cfg.get("server") or "").rstrip("/")
+            instance = cfg.get("instance") or ""
+            api_key = cfg.get("api_key") or ""
+            destinos = cfg.get("destinos") or []
+            if not server or not instance or not api_key or not destinos:
+                return {"error": "Config WhatsApp incompleta"}, 400
+            endpoint = f"{server}/message/sendText/{instance}"
+            headers = {"apikey": api_key, "Content-Type": "application/json"}
+            erros = []
+            for numero in destinos:
+                try:
+                    r = requests.post(endpoint, json={"number": numero, "text": msg}, headers=headers, timeout=10)
+                    last_code = r.status_code
+                    if r.status_code < 400:
+                        any_success = True
+                    else:
+                        erros.append(f"{numero}: HTTP {r.status_code} {r.text[:200]}")
+                except Exception as e:
+                    erros.append(f"{numero}: {e}")
+            status = "success" if any_success else "error"
+            cursor.execute(
+                "UPDATE webhooks SET ultima_execucao=%s, ultimo_status=%s, ultimo_codigo=%s WHERE id=%s",
+                (datetime.now(), status, last_code, id),
+            )
+            conn.commit()
+            if any_success:
+                return {"status": "ok", "code": last_code, "erros": erros}
+            return {"error": "Falha ao enviar para todos os destinos", "detalhes": erros}, 502
+        else:
+            response = requests.post(hook["url"], json={"content": msg}, timeout=5)
+            status = "success" if response.status_code < 400 else "error"
+            cursor.execute(
+                "UPDATE webhooks SET ultima_execucao=%s, ultimo_status=%s, ultimo_codigo=%s WHERE id=%s",
+                (datetime.now(), status, response.status_code, id),
+            )
+            conn.commit()
+            return {"status": "ok", "code": response.status_code}
 
     except Exception as e:
         return {"error": str(e)}, 500
@@ -1510,7 +1653,7 @@ def criar_user():
         return {"error": "Usuário já existe"}, 409
 
     cursor.execute(
-        "INSERT INTO users (username, password, role, ativo) VALUES (%s, %s, %s, 1)",
+        "INSERT INTO users (username, password, role, ativo) VALUES (%s, %s, %s, true)",
         (username, hash_password(password), role)
     )
     conn.commit()
@@ -1710,6 +1853,104 @@ def cleanup_status():
     return jsonify(CLEANUP_STATE)
 
 # =========================================================
+
+
+# =========================================================
+# =================== QBITTORRENT =========================
+# =========================================================
+
+QBIT_URL   = "http://10.0.1.157:8080"
+QBIT_USER  = "admin"
+QBIT_PASS  = "adminadmin"
+QBIT_PATHS = [
+    "/mnt/media/filmes",
+    "/mnt/media/series",
+    "/mnt/media2/animes",
+    "/mnt/media2/animeseries",
+    "/mnt/media2/desenhos",
+    "/mnt/media2/desenhoseries",
+]
+
+_qbit_sess = None
+
+def _qbit_login():
+    global _qbit_sess
+    import requests as _r
+    s = _r.Session()
+    resp = s.post(f"{QBIT_URL}/api/v2/auth/login",
+                  data={"username": QBIT_USER, "password": QBIT_PASS}, timeout=10)
+    if resp.text not in ("Ok.", "Ok"):
+        raise Exception(f"qBittorrent login falhou: {resp.text}")
+    _qbit_sess = s
+
+def _qbit(method, path, **kwargs):
+    global _qbit_sess
+    if _qbit_sess is None:
+        _qbit_login()
+    r = getattr(_qbit_sess, method)(f"{QBIT_URL}{path}", timeout=15, **kwargs)
+    if r.status_code == 403:
+        _qbit_login()
+        r = getattr(_qbit_sess, method)(f"{QBIT_URL}{path}", timeout=15, **kwargs)
+    return r
+
+@app.route("/torrents")
+@login_required
+def torrents():
+    return render_template("torrents.html", save_paths=QBIT_PATHS)
+
+@app.route("/api/qbit/torrents")
+@login_required
+def api_qbit_list():
+    try:
+        return jsonify(_qbit("get", "/api/v2/torrents/info").json())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 503
+
+@app.route("/api/qbit/add", methods=["POST"])
+@login_required
+def api_qbit_add():
+    body      = request.get_json() or {}
+    magnet    = body.get("magnetUrl", "").strip()
+    save_path = body.get("savePath", "")
+    if not magnet:
+        return jsonify({"error": "magnetUrl obrigatorio"}), 400
+    try:
+        r = _qbit("post", "/api/v2/torrents/add",
+                  data={"urls": magnet, "savepath": save_path})
+        return jsonify({"ok": True, "result": r.text})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 503
+
+@app.route("/api/qbit/pause/<torrent_hash>", methods=["POST"])
+@login_required
+def api_qbit_pause(torrent_hash):
+    try:
+        _qbit("post", "/api/v2/torrents/pause", data={"hashes": torrent_hash})
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 503
+
+@app.route("/api/qbit/resume/<torrent_hash>", methods=["POST"])
+@login_required
+def api_qbit_resume(torrent_hash):
+    try:
+        _qbit("post", "/api/v2/torrents/resume", data={"hashes": torrent_hash})
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 503
+
+@app.route("/api/qbit/delete/<torrent_hash>", methods=["POST"])
+@login_required
+def api_qbit_delete(torrent_hash):
+    body      = request.get_json() or {}
+    del_files = str(body.get("deleteFiles", False)).lower()
+    try:
+        _qbit("post", "/api/v2/torrents/delete",
+              data={"hashes": torrent_hash, "deleteFiles": del_files})
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 503
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3070, debug=True, use_reloader=False)

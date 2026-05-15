@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div>
+        <h1 class="text-3xl font-bold text-white flex items-center gap-3">
+            <i data-lucide="megaphone" class="text-purple-500"></i> Updates
+        </h1>
+        <p class="text-slate-400">Histórico de atualizações do MDM Titan — agrupado por dia, em ordem do mais recente.</p>
+    </div>
+</div>
+
+<div id="updatesContainer" class="space-y-4">
+    <div class="text-center text-slate-500 py-12">Carregando...</div>
+</div>
+
+<style>
+    .day-card {
+        background: linear-gradient(180deg, #1a1330 0%, #15102a 100%);
+        border: 1px solid rgba(168, 85, 247, 0.15);
+        border-radius: 16px;
+        overflow: hidden;
+        transition: all 0.2s;
+    }
+
+    .day-header {
+        padding: 18px 24px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        user-select: none;
+        transition: background 0.2s;
+    }
+
+    .day-header:hover {
+        background: rgba(168, 85, 247, 0.05);
+    }
+
+    .day-date {
+        font-size: 20px;
+        font-weight: 700;
+        color: #fff;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .day-count {
+        font-size: 11px;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        background: rgba(168, 85, 247, 0.15);
+        color: #c4b5fd;
+        font-weight: 600;
+    }
+
+    .day-body {
+        border-top: 1px solid rgba(168, 85, 247, 0.1);
+        padding: 8px 0;
+    }
+
+    .day-body.collapsed { display: none; }
+
+    .update-row {
+        padding: 18px 24px;
+        display: flex;
+        gap: 14px;
+        border-bottom: 1px solid rgba(168, 85, 247, 0.06);
+    }
+
+    .update-row:last-child { border-bottom: none; }
+
+    .update-icon {
+        flex-shrink: 0;
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        background: rgba(168, 85, 247, 0.12);
+        color: #c4b5fd;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .update-content { flex: 1; min-width: 0; }
+
+    .update-head {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+    }
+
+    .update-title {
+        font-size: 15px;
+        font-weight: 700;
+        color: #fff;
+    }
+
+    .update-time {
+        font-size: 12px;
+        color: #94a3b8;
+        font-family: ui-monospace, SFMono-Regular, monospace;
+        font-weight: 600;
+    }
+
+    .update-body {
+        color: #cbd5e1;
+        font-size: 14px;
+        line-height: 1.65;
+    }
+
+    .update-body p { margin: 0 0 8px; }
+    .update-body p:last-child { margin-bottom: 0; }
+    .update-body strong { color: #fff; font-weight: 700; }
+    .update-body em { color: #c4b5fd; font-style: italic; }
+    .update-body code {
+        background: rgba(168, 85, 247, 0.12);
+        color: #ddd6fe;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+    .update-body pre {
+        background: #0b0712;
+        border: 1px solid rgba(168, 85, 247, 0.15);
+        padding: 12px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 8px 0;
+    }
+    .update-body pre code {
+        background: transparent;
+        padding: 0;
+        color: #cbd5e1;
+    }
+    .update-body ul, .update-body ol {
+        margin: 4px 0 8px;
+        padding-left: 22px;
+    }
+    .update-body li { margin: 2px 0; }
+    .update-body h1, .update-body h2, .update-body h3 {
+        color: #fff;
+        font-weight: 700;
+        margin: 12px 0 6px;
+    }
+    .update-body h3 { font-size: 14px; }
+    .update-body h2 { font-size: 16px; }
+    .update-body h1 { font-size: 18px; }
+    .update-body a { color: #c4b5fd; text-decoration: underline; }
+    .update-body blockquote {
+        border-left: 3px solid rgba(168, 85, 247, 0.4);
+        padding-left: 12px;
+        margin: 6px 0;
+        color: #94a3b8;
+        font-style: italic;
+    }
+
+    .chevron { transition: transform 0.2s; }
+    .chevron.open { transform: rotate(180deg); }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+    function fmtDate(iso) {
+        const d = new Date(iso);
+        return d.toLocaleDateString("pt-BR");
+    }
+    function fmtTime(iso) {
+        const d = new Date(iso);
+        return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    }
+    function dayKey(iso) {
+        const d = new Date(iso);
+        return d.toLocaleDateString("pt-BR");
+    }
+
+    function escapeHtml(s) {
+        return (s || "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+    }
+
+    async function carregarUpdates() {
+        try {
+            const res = await fetch("/api/updates");
+            const all = await res.json();
+            const container = document.getElementById("updatesContainer");
+
+            if (!all || !all.length) {
+                container.innerHTML = '<div class="text-center text-slate-500 py-12">Nenhum update por enquanto.</div>';
+                return;
+            }
+
+            // Agrupa por dia (já vem ordenado DESC do backend)
+            const groups = {};
+            const order = [];
+            all.forEach(u => {
+                const k = dayKey(u.created_at);
+                if (!groups[k]) { groups[k] = []; order.push(k); }
+                groups[k].push(u);
+            });
+
+            container.innerHTML = "";
+            order.forEach((dayLabel, idx) => {
+                const items = groups[dayLabel];
+                const isFirst = idx === 0;
+                const card = document.createElement("div");
+                card.className = "day-card";
+                card.innerHTML = `
+                    <div class="day-header" onclick="toggleDay(this)">
+                        <div class="flex items-center gap-4">
+                            <span class="day-date">${dayLabel}</span>
+                            <span class="day-count">${items.length} update${items.length > 1 ? "s" : ""}</span>
+                        </div>
+                        <i data-lucide="chevron-down" class="chevron ${isFirst ? 'open' : ''} text-slate-400"></i>
+                    </div>
+                    <div class="day-body ${isFirst ? '' : 'collapsed'}">
+                        ${items.map(u => `
+                            <div class="update-row">
+                                <div class="update-icon"><i data-lucide="megaphone" class="w-4 h-4"></i></div>
+                                <div class="update-content">
+                                    <div class="update-head">
+                                        <span class="update-title">${escapeHtml(u.title)}</span>
+                                        <span class="update-time">${fmtTime(u.created_at)}</span>
+                                    </div>
+                                    <div class="update-body">${marked.parse(u.body || "")}</div>
+                                </div>
+                            </div>
+                        `).join("")}
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+
+            lucide.createIcons();
+        } catch (e) {
+            console.error(e);
+            document.getElementById("updatesContainer").innerHTML =
+                '<div class="text-center text-red-400 py-12">Erro ao carregar updates.</div>';
+        }
+    }
+
+    function toggleDay(headerEl) {
+        const body = headerEl.nextElementSibling;
+        const chev = headerEl.querySelector(".chevron");
+        body.classList.toggle("collapsed");
+        chev.classList.toggle("open");
+    }
+
+    carregarUpdates();
+</script>
+
+{% endblock %}

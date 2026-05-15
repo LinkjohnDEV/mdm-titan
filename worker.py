@@ -173,10 +173,51 @@ def download_direct(url, filepath, log, job_id=None):
 # ======================== WEBHOOK ========================
 # =========================================================
 
+def _dispatch_generic(hook, message):
+    response = requests.post(
+        hook["url"],
+        json={"content": message},
+        timeout=5,
+    )
+    return response.status_code
+
+
+def _dispatch_whatsapp(hook, message):
+    cfg = hook.get("config") or {}
+    server = (cfg.get("server") or "").rstrip("/")
+    instance = cfg.get("instance") or ""
+    api_key = cfg.get("api_key") or ""
+    destinos = cfg.get("destinos") or []
+
+    if not server or not instance or not api_key or not destinos:
+        raise ValueError("config whatsapp incompleta (server/instance/api_key/destinos)")
+
+    endpoint = f"{server}/message/sendText/{instance}"
+    headers = {"apikey": api_key, "Content-Type": "application/json"}
+
+    last_code = 0
+    any_success = False
+    for numero in destinos:
+        try:
+            r = requests.post(
+                endpoint,
+                json={"number": numero, "text": message},
+                headers=headers,
+                timeout=10,
+            )
+            last_code = r.status_code
+            if r.status_code < 400:
+                any_success = True
+        except Exception as e:
+            print(f"[webhook][whatsapp] falha em {numero}: {e}")
+            last_code = 0
+    return last_code if any_success else (last_code or 500)
+
+
 def send_webhook(message):
     """
     Envia mensagem para todos webhooks ativos.
-    Atualiza status de execução no banco.
+    Suporta tipos: generic (Discord-like) e whatsapp (Evolution API).
     """
     try:
         conn = get_connection()
@@ -187,38 +228,32 @@ def send_webhook(message):
 
         for hook in hooks:
             try:
-                response = requests.post(
-                    hook["url"],
-                    json={"content": message},
-                    timeout=5
+                tipo = hook.get("tipo") or "generic"
+                if tipo == "whatsapp":
+                    code = _dispatch_whatsapp(hook, message)
+                else:
+                    code = _dispatch_generic(hook, message)
+
+                status = "success" if code and code < 400 else "error"
+                cursor.execute(
+                    """
+                    UPDATE webhooks
+                    SET ultima_execucao=%s, ultimo_status=%s, ultimo_codigo=%s
+                    WHERE id=%s
+                    """,
+                    (datetime.now(), status, code, hook["id"]),
                 )
 
-                status = "success" if response.status_code < 400 else "error"
-
-                cursor.execute("""
+            except Exception as e:
+                print(f"[webhook] falha no hook {hook.get('id')}: {e}")
+                cursor.execute(
+                    """
                     UPDATE webhooks
-                    SET ultima_execucao=%s,
-                        ultimo_status=%s,
-                        ultimo_codigo=%s
+                    SET ultima_execucao=%s, ultimo_status='error', ultimo_codigo=0
                     WHERE id=%s
-                """, (
-                    datetime.now(),
-                    status,
-                    response.status_code,
-                    hook["id"]
-                ))
-
-            except Exception:
-                cursor.execute("""
-                    UPDATE webhooks
-                    SET ultima_execucao=%s,
-                        ultimo_status='error',
-                        ultimo_codigo=0
-                    WHERE id=%s
-                """, (
-                    datetime.now(),
-                    hook["id"]
-                ))
+                    """,
+                    (datetime.now(), hook["id"]),
+                )
 
         conn.commit()
         cursor.close()

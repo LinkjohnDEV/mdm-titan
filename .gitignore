@@ -6,3 +6,10 @@ __pycache__/
 *.pyc
 *.pyo
 .DS_Store
+
+# backups locais do .env
+.env.bak*
+
+# JSONs de Script Runner — contém URLs com tokens auth do provedor M3U
+data/series/
+data/filmes/
