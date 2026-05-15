@@ -10,6 +10,10 @@
   </div>
   <p class="text-slate-400 text-sm mb-6">Baixe qualquer arquivo para qualquer pasta ou execute um script em lote.</p>
 
+  <div class="mb-6">
+    {% include "_storage_picker.html" %}
+  </div>
+
   <!-- Tabs -->
   <div class="flex gap-2 mb-6 flex-wrap">
     <button id="tab-btn-coringa" onclick="switchTab('coringa')"
@@ -318,13 +322,14 @@ function limparSelecao() {
 
 async function carregarPastas(rel) {
   currentPath = rel;
-  const res = await fetch("/api/storage/browse?path=" + encodeURIComponent(rel));
+  const storage = getSelectedStorage() || "/mnt/media";
+  const res = await fetch("/api/storage/browse?path=" + encodeURIComponent(rel) + "&storage=" + encodeURIComponent(storage));
   const data = await res.json();
   destinoPath = data.path;
 
   const bc = document.getElementById("breadcrumb");
   const parts = data.path ? data.path.split("/") : [];
-  let html = `<span onclick="carregarPastas('')" class="cursor-pointer hover:text-yellow-400 transition">/mnt/media</span>`;
+  let html = `<span onclick="carregarPastas('')" class="cursor-pointer hover:text-yellow-400 transition">${storage}</span>`;
   let acc = "";
   parts.forEach((p, i) => {
     acc += (acc ? "/" : "") + p; const a = acc;
@@ -342,7 +347,7 @@ async function carregarPastas(rel) {
   if (!data.folders.length) phtml += '<p class="text-slate-500 text-sm px-4 py-3 italic">Pasta vazia.</p>';
   pl.innerHTML = phtml;
 
-  document.getElementById("destinoTexto").textContent = destinoPath ? "/mnt/media/" + destinoPath : "/mnt/media";
+  document.getElementById("destinoTexto").textContent = destinoPath ? storage + "/" + destinoPath : storage;
   document.getElementById("stepBotao").classList.remove("hidden");
   lucide.createIcons();
 }
@@ -351,7 +356,8 @@ async function iniciarDownload() {
   if (!selectedItems.length) return;
   const btn = document.getElementById("btnTexto"); btn.textContent = "Enviando...";
   const items = selectedItems.map(s => ({ name: s.nome, link: s.link }));
-  const res = await fetch("/add_coringa", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ items, dest: destinoPath }) });
+  const storage = getSelectedStorage();
+  const res = await fetch("/add_coringa", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ items, dest: destinoPath, storage }) });
   const data = await res.json();
   if (res.ok) { btn.textContent = "✅ " + data.message; setTimeout(() => { btn.textContent = "INICIAR DOWNLOAD CORINGA"; limparSelecao(); }, 3000); }
   else { btn.textContent = "❌ " + (data.message || data.error); setTimeout(() => { btn.textContent = "INICIAR DOWNLOAD CORINGA"; }, 3000); }
@@ -447,12 +453,13 @@ function previewScript() {
 }
 
 async function sc_carregarPastas(rel) {
-  const res = await fetch("/api/storage/browse?path=" + encodeURIComponent(rel));
+  const storage = getSelectedStorage() || "/mnt/media";
+  const res = await fetch("/api/storage/browse?path=" + encodeURIComponent(rel) + "&storage=" + encodeURIComponent(storage));
   const data = await res.json();
   sc_destinoPath = data.path;
   const bc = document.getElementById("sc_breadcrumb");
   const parts = data.path ? data.path.split("/") : [];
-  let html = `<span onclick="sc_carregarPastas('')" class="cursor-pointer hover:text-yellow-400 transition">/mnt/media</span>`;
+  let html = `<span onclick="sc_carregarPastas('')" class="cursor-pointer hover:text-yellow-400 transition">${storage}</span>`;
   let acc = "";
   parts.forEach((p, i) => {
     acc += (acc ? "/" : "") + p; const a = acc;
@@ -468,16 +475,17 @@ async function sc_carregarPastas(rel) {
   });
   if (!data.folders.length) phtml += '<p class="text-slate-500 text-sm px-4 py-3 italic">Pasta vazia.</p>';
   pl.innerHTML = phtml;
-  document.getElementById("sc_destinoTexto").textContent = sc_destinoPath ? "/mnt/media/" + sc_destinoPath : "/mnt/media";
+  document.getElementById("sc_destinoTexto").textContent = sc_destinoPath ? storage + "/" + sc_destinoPath : storage;
   lucide.createIcons();
 }
 
 async function executarScript(force = false) {
   if (!parsedScript) return;
   const btn = document.getElementById("scriptBtnText"); btn.textContent = "Executando...";
+  const storage = getSelectedStorage();
   const res = await fetch("/run_script", {
     method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ script: parsedScript, dest: sc_destinoPath, force })
+    body: JSON.stringify({ script: parsedScript, dest: sc_destinoPath, force, storage })
   });
   const data = await res.json();
   if (res.status === 409) { if (confirm(data.message || "Já existe. Deseja sobrescrever?")) executarScript(true); btn.textContent = "EXECUTAR SCRIPT"; return; }
@@ -533,12 +541,13 @@ function previewFilmes() {
 }
 
 async function fm_carregarPastas(rel) {
-  const res = await fetch("/api/storage/browse?path=" + encodeURIComponent(rel));
+  const storage = getSelectedStorage() || "/mnt/media";
+  const res = await fetch("/api/storage/browse?path=" + encodeURIComponent(rel) + "&storage=" + encodeURIComponent(storage));
   const data = await res.json();
   fm_destinoPath = data.path;
   const bc = document.getElementById("fm_breadcrumb");
   const parts = data.path ? data.path.split("/") : [];
-  let html = `<span onclick="fm_carregarPastas('')" class="cursor-pointer hover:text-cyan-400 transition">/mnt/media</span>`;
+  let html = `<span onclick="fm_carregarPastas('')" class="cursor-pointer hover:text-cyan-400 transition">${storage}</span>`;
   let acc = "";
   parts.forEach((p, i) => {
     acc += (acc ? "/" : "") + p; const a = acc;
@@ -554,22 +563,36 @@ async function fm_carregarPastas(rel) {
   });
   if (!data.folders.length) phtml += '<p class="text-slate-500 text-sm px-4 py-3 italic">Pasta vazia.</p>';
   pl.innerHTML = phtml;
-  document.getElementById("fm_destinoTexto").textContent = fm_destinoPath ? "/mnt/media/" + fm_destinoPath : "/mnt/media";
+  document.getElementById("fm_destinoTexto").textContent = fm_destinoPath ? storage + "/" + fm_destinoPath : storage;
   lucide.createIcons();
 }
 
 async function executarFilmes(force = false) {
   if (!parsedFilmes) return;
   const btn = document.getElementById("filmesBtnText"); btn.textContent = "Executando...";
+  const storage = getSelectedStorage();
   const res = await fetch("/run_script", {
     method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ script: parsedFilmes, dest: fm_destinoPath, force })
+    body: JSON.stringify({ script: parsedFilmes, dest: fm_destinoPath, force, storage })
   });
   const data = await res.json();
   if (res.status === 409) { if (confirm(data.message || "Já existe. Deseja sobrescrever?")) executarFilmes(true); btn.textContent = "BAIXAR TODOS OS FILMES"; return; }
   if (res.ok) { btn.textContent = "✅ " + data.message; setTimeout(() => { window.location.href = "/downloads"; }, 1500); }
   else { btn.textContent = "❌ " + (data.message || data.error || "Erro"); setTimeout(() => { btn.textContent = "BAIXAR TODOS OS FILMES"; }, 3000); }
 }
+
+// Quando o usuário trocar de storage, reseta os browsers de cada aba pra raiz
+onStorageChange(() => {
+  if (typeof selectedItems !== "undefined" && selectedItems.length) {
+    try { carregarPastas(""); } catch (e) {}
+  }
+  if (typeof parsedScript !== "undefined" && parsedScript) {
+    try { sc_carregarPastas(""); } catch (e) {}
+  }
+  if (typeof parsedFilmes !== "undefined" && parsedFilmes) {
+    try { fm_carregarPastas("filmes"); } catch (e) {}
+  }
+});
 
 lucide.createIcons();
 </script>

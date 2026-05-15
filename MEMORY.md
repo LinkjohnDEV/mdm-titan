@@ -11,7 +11,7 @@
 - **URL local:** `http://localhost:3070`
 - **Porta:** 3070
 - **Stack:** Python 3.10, Flask, PostgreSQL, SQLite in-memory (indexer), TailwindCSS, Lucide Icons
-- **Storage de mídia:** `/mnt/media/`
+- **Storage de mídia:** `/mnt/media*` (auto-discovery — qualquer mount em `/mnt/media`, `/mnt/media2`, futuros `/mnt/media3`…). UI mostra cards coloridos por % de uso.
 
 ---
 
@@ -306,6 +306,40 @@ Usa `E'...'` no Postgres pra interpretar `\n`.
 
 ---
 
+## Storage Pools (multi-HD)
+
+Sistema descobre automaticamente todos os diretórios que casam com `/mnt/media*` (constante `STORAGE_GLOB`). Cada um vira um pool selecionável em todas as páginas de download.
+
+### API
+`GET /api/storage_pools` → lista `[{path, label, used_pct, free_human, total_human, status}]`. Cores:
+- `green` (≤59%), `orange` (60–85%), `red` (≥86%)
+
+### Helpers (em `app.py`)
+- `list_storage_roots()` — glob de `/mnt/media*`
+- `resolve_storage(raw)` — valida ou cai no `DEFAULT_STORAGE` (`/mnt/media`)
+- `category_base(storage, tipo)` — monta `{storage}/{subpasta}`
+- `get_category_base(data, tipo)` — atalho que lê `data["storage"]` do request
+
+### Subpastas por tipo (`CATEGORY_FOLDER`)
+| tipo | folder |
+|------|--------|
+| serie | series |
+| filme | filmes |
+| desenho | desenhos |
+| desenho_serie | desenhosseries |
+| anime | animes |
+| anime_serie | animeseries |
+
+### Worker
+`worker.py:get_categoria(caminho)` extrai a categoria pela 2ª parte do path via regex `^/mnt/[^/]+/([^/]+)`. **Storage-agnóstico** — funciona com qualquer mount.
+
+### UI
+Partial `templates/_storage_picker.html`. Inclui via `{% include "_storage_picker.html" %}`. Expõe `getSelectedStorage()` e `onStorageChange(cb)` no JS. Memoriza a escolha em `localStorage.mdm.selectedStorage`.
+
+Já incluído em: `filmes.html`, `series.html`, `desenhos.html`, `animes.html`, `coringa.html`.
+
+---
+
 ## Segurança e Deploy
 
 - `.env` nunca commitar — contém credenciais do banco
@@ -320,6 +354,7 @@ Usa `E'...'` no Postgres pra interpretar `\n`.
 
 | Versão | Feature |
 |--------|---------|
+| v2.4 | Storage Pools — multi-HD com card colorido em todas as páginas de download (auto-discovery /mnt/media*) |
 | v2.3 | Página `/updates` (changelog público com markdown, agrupado por dia) |
 | v2.2 | Webhook WhatsApp via Evolution API (multi-destino, chips UI), edição inline de webhooks, migração DB pro host 10.0.1.176 |
 | v2.1 | Desenhos, Animes, Storage Manager (criar/renomear/mover), Dashboard avançado (gráfico 7 dias, paginação), Badges TMDB inteligentes |

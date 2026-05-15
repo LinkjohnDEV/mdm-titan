@@ -123,6 +123,10 @@
             </div>
         </div>
     </div>
+
+    <div class="mt-6">
+        {% include "_storage_picker.html" %}
+    </div>
 </div>
 
 <script>
@@ -165,7 +169,9 @@
     function startDesenhoFilme(force = false) {
         const name = document.getElementById("desenho_filme_nome").value, link = document.getElementById("desenho_filme_link").value;
         if (!name || !link) { alert("Preencha o nome e o link antes de iniciar."); return; }
-        fetch("/add_desenho_filme", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, link, force }) })
+        const storage = getSelectedStorage();
+        if (!storage) { alert("Escolha um storage de destino."); return; }
+        fetch("/add_desenho_filme", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, link, force, storage }) })
             .then(async res => { const data = await res.json(); if (res.status === 409) { if (confirm(data.message)) startDesenhoFilme(true); return null; } if (!res.ok) { alert(data.message || data.error || "Erro."); return null; } return data; })
             .then(data => { if (data) window.location.href = "/downloads"; });
     }
@@ -235,7 +241,9 @@
         const nome = document.getElementById("ds_serieNome").value.trim();
         if (!nome) { alert("Preencha o nome da série."); return; }
         if (!ds_fila.length) { alert("Adicione pelo menos uma temporada."); return; }
-        fetch("/add_desenho_serie_completa", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nome, seasons: ds_fila, force }) })
+        const storage = getSelectedStorage();
+        if (!storage) { alert("Escolha um storage de destino."); return; }
+        fetch("/add_desenho_serie_completa", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nome, seasons: ds_fila, force, storage }) })
             .then(async res => { const data = await res.json(); if (res.status === 409) { if (confirm(data.message)) ds_iniciarDownload(true); return null; } if (!res.ok) { alert(data.message || data.error || "Erro."); return null; } return data; })
             .then(data => { if (data) window.location.href = "/downloads"; });
     }

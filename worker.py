@@ -34,14 +34,26 @@ _lock = threading.Lock()
 _ativos_total = 0
 
 
+_CATEGORIA_BY_FOLDER = {
+    'animeseries':    'animeseries',
+    'animes':         'animes',
+    'desenhosseries': 'desenhosseries',
+    'desenhos':       'desenhos',
+    'series':         'series',
+    'filmes':         'filmes',
+}
+
 def get_categoria(caminho):
-    """Determina a categoria do job pelo caminho de destino."""
-    c = caminho or ''
-    if '/mnt/media/animeseries'   in c: return 'animeseries'
-    if '/mnt/media/animes'        in c: return 'animes'
-    if '/mnt/media/desenhosseries' in c: return 'desenhosseries'
-    if '/mnt/media/desenhos'      in c: return 'desenhos'
-    if '/mnt/media/series'        in c: return 'series'
+    """Categoria do job pela 2ª parte do path (independe do storage pool).
+
+    Ex: /mnt/media/animes/foo  -> animes
+        /mnt/media2/series/bar -> series
+        /mnt/media3/filmes/x   -> filmes
+    """
+    import re as _re
+    m = _re.match(r'^/mnt/[^/]+/([^/]+)', caminho or '')
+    if m:
+        return _CATEGORIA_BY_FOLDER.get(m.group(1), 'filmes')
     return 'filmes'
 
 
@@ -265,15 +277,6 @@ def send_webhook(message):
 # =========================================================
 # ======================== FILA ===========================
 # =========================================================
-
-CATEGORIA_PATH = {
-    'filmes':          '/mnt/media/filmes/',
-    'series':          '/mnt/media/series/',
-    'desenhos':        '/mnt/media/desenhos/',
-    'desenhosseries':  '/mnt/media/desenhosseries/',
-    'animes':          '/mnt/media/animes/',
-    'animeseries':     '/mnt/media/animeseries/',
-}
 
 def get_next_jobs(cursor, slots_disponiveis):
     """

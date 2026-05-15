@@ -82,6 +82,10 @@
         </div>
     </div>
 
+    <div class="mt-6">
+        {% include "_storage_picker.html" %}
+    </div>
+
 </div>
 
 <script>
@@ -201,9 +205,11 @@
         const nome = document.getElementById("sc_serieNome").value.trim();
         if (!nome) { alert("Preencha o nome da série."); return; }
         if (!sc_fila.length) { alert("Adicione pelo menos uma temporada à fila."); return; }
+        const storage = getSelectedStorage();
+        if (!storage) { alert("Escolha um storage de destino."); return; }
         fetch("/add_serie_completa", {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: nome, seasons: sc_fila, force })
+            body: JSON.stringify({ name: nome, seasons: sc_fila, force, storage })
         }).then(async res => {
             const data = await res.json();
             if (res.status === 409) { if (confirm(data.message)) sc_iniciarDownload(true); return null; }

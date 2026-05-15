@@ -87,13 +87,52 @@ def inject_user_info():
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "data", "dados.txt")
-SERIES_BASE = "/mnt/media/series"
-FILMES_BASE = "/mnt/media/filmes"
-DESENHOS_BASE = "/mnt/media/desenhos"
-DESENHOS_SERIES_BASE = "/mnt/media/desenhosseries"
-ANIMES_BASE = "/mnt/media/animes"
-ANIMES_SERIES_BASE = "/mnt/media/animeseries"
-MEDIA_BASE = "/mnt/media"
+
+# Storage pools — descobertos automaticamente em /mnt/media*
+import glob as _glob
+STORAGE_GLOB = "/mnt/media*"
+DEFAULT_STORAGE = "/mnt/media"
+
+# Subpasta de cada categoria dentro do storage escolhido
+CATEGORY_FOLDER = {
+    "serie":          "series",
+    "filme":          "filmes",
+    "desenho":        "desenhos",
+    "desenho_serie":  "desenhosseries",
+    "anime":          "animes",
+    "anime_serie":    "animeseries",
+}
+
+def list_storage_roots():
+    """Lista paths de /mnt/media* que existem e são diretórios."""
+    return sorted(p for p in _glob.glob(STORAGE_GLOB) if os.path.isdir(p))
+
+def resolve_storage(raw):
+    """Valida que o storage informado é um dos descobertos; senão usa o default."""
+    if not raw:
+        return DEFAULT_STORAGE
+    raw = raw.rstrip("/")
+    return raw if raw in list_storage_roots() else DEFAULT_STORAGE
+
+def category_base(storage, tipo):
+    """Monta {storage}/{subpasta-da-categoria}."""
+    sub = CATEGORY_FOLDER.get(tipo, tipo)
+    return os.path.join(storage, sub)
+
+def get_category_base(data, tipo):
+    """Atalho usado nas rotas: resolve storage do request e devolve a base da categoria."""
+    raw = (data or {}).get("storage")
+    return category_base(resolve_storage(raw), tipo)
+
+# Constantes legadas — apontam pro storage padrão; mantidas pra backwards-compat
+# nas funções que ainda não foram migradas pra receber storage por request.
+SERIES_BASE = category_base(DEFAULT_STORAGE, "serie")
+FILMES_BASE = category_base(DEFAULT_STORAGE, "filme")
+DESENHOS_BASE = category_base(DEFAULT_STORAGE, "desenho")
+DESENHOS_SERIES_BASE = category_base(DEFAULT_STORAGE, "desenho_serie")
+ANIMES_BASE = category_base(DEFAULT_STORAGE, "anime")
+ANIMES_SERIES_BASE = category_base(DEFAULT_STORAGE, "anime_serie")
+MEDIA_BASE = DEFAULT_STORAGE
 
 # Inicializa indexador de busca
 indexer.init(DATA_FILE)
@@ -319,7 +358,7 @@ def add_serie():
         return {"message": "Dados inválidos"}, 400
         
     force = data.get("force", False)
-    serie_path = os.path.join(SERIES_BASE, nome)
+    serie_path = os.path.join(get_category_base(data, "serie"), nome)
     season_path = os.path.join(serie_path, f"Season {temporada}")
     
     # Se a pasta da temporada já existir e "force" não for verdadeiro
@@ -375,7 +414,7 @@ def add_serie_completa():
         if not temporada or not episodios:
             continue
 
-        serie_path = os.path.join(SERIES_BASE, nome)
+        serie_path = os.path.join(get_category_base(data, "serie"), nome)
         season_path = os.path.join(serie_path, f"Season {temporada}")
 
         if os.path.exists(season_path) and any(os.scandir(season_path)) and not force:
@@ -461,7 +500,7 @@ def add_filme():
     nome_seguro = re.sub(r'[\\/*?:"<>|]', "", nome).strip()
 
     force = data.get("force", False)
-    pasta = os.path.join(FILMES_BASE, nome_seguro)
+    pasta = os.path.join(get_category_base(data, "filme"), nome_seguro)
     
     if os.path.exists(pasta) and any(os.scandir(pasta)) and not force:
         return {"error": "exists", "message": "Este filme já existe no servidor. Deseja sobrescrevê-lo e baixar novamente?"}, 409
@@ -544,7 +583,7 @@ def add_desenho_filme():
 
     nome_seguro = re.sub(r'[\\/*?:"<>|]', "", nome).strip()
     force = data.get("force", False)
-    pasta = os.path.join(DESENHOS_BASE, nome_seguro)
+    pasta = os.path.join(get_category_base(data, "desenho"), nome_seguro)
 
     if os.path.exists(pasta) and any(os.scandir(pasta)) and not force:
         return {"error": "exists", "message": "Este desenho já existe no servidor. Deseja sobrescrevê-lo e baixar novamente?"}, 409
@@ -595,7 +634,7 @@ def add_desenho_serie():
         return {"message": "Dados inválidos"}, 400
 
     force = data.get("force", False)
-    serie_path = os.path.join(DESENHOS_SERIES_BASE, nome)
+    serie_path = os.path.join(get_category_base(data, "desenho_serie"), nome)
     season_path = os.path.join(serie_path, f"Season {temporada}")
 
     if os.path.exists(season_path) and any(os.scandir(season_path)) and not force:
@@ -640,7 +679,7 @@ def add_desenho_serie_completa():
         episodios = s.get("episodes")
         if not temporada or not episodios:
             continue
-        serie_path = os.path.join(DESENHOS_SERIES_BASE, nome)
+        serie_path = os.path.join(get_category_base(data, "desenho_serie"), nome)
         season_path = os.path.join(serie_path, f"Season {temporada}")
         if os.path.exists(season_path) and any(os.scandir(season_path)) and not force:
             exists_seasons.append(temporada)
@@ -702,7 +741,7 @@ def add_anime_filme():
 
     nome_seguro = re.sub(r'[\\/*?:"<>|]', "", nome).strip()
     force = data.get("force", False)
-    pasta = os.path.join(ANIMES_BASE, nome_seguro)
+    pasta = os.path.join(get_category_base(data, "anime"), nome_seguro)
 
     if os.path.exists(pasta) and any(os.scandir(pasta)) and not force:
         return {"error": "exists", "message": "Este anime já existe no servidor. Deseja sobrescrevê-lo e baixar novamente?"}, 409
@@ -753,7 +792,7 @@ def add_anime_serie():
         return {"message": "Dados inválidos"}, 400
 
     force = data.get("force", False)
-    serie_path = os.path.join(ANIMES_SERIES_BASE, nome)
+    serie_path = os.path.join(get_category_base(data, "anime_serie"), nome)
     season_path = os.path.join(serie_path, f"Season {temporada}")
 
     if os.path.exists(season_path) and any(os.scandir(season_path)) and not force:
@@ -798,7 +837,7 @@ def add_anime_serie_completa():
         episodios = s.get("episodes")
         if not temporada or not episodios:
             continue
-        serie_path = os.path.join(ANIMES_SERIES_BASE, nome)
+        serie_path = os.path.join(get_category_base(data, "anime_serie"), nome)
         season_path = os.path.join(serie_path, f"Season {temporada}")
         if os.path.exists(season_path) and any(os.scandir(season_path)) and not force:
             exists_seasons.append(temporada)
@@ -833,6 +872,55 @@ def _safe_path(relative):
     if not full.startswith(os.path.realpath(MEDIA_BASE)):
         return None
     return full
+
+
+@app.route("/api/storage_pools")
+@login_required
+def storage_pools():
+    """Lista os storage pools disponíveis em /mnt/media* com uso e status de cor.
+
+    Cores:
+      - verde  (green)  : <= 59%
+      - laranja (orange): 60–85%
+      - vermelho (red)  : >= 86%
+    """
+    pools = []
+    for path in list_storage_roots():
+        try:
+            total, used, free = shutil.disk_usage(path)
+            pct = (used / total * 100) if total else 0
+            if pct >= 86:
+                status = "red"
+            elif pct >= 60:
+                status = "orange"
+            else:
+                status = "green"
+            pools.append({
+                "path": path,
+                "label": os.path.basename(path) or path,
+                "used_pct": round(pct, 1),
+                "used_human": _human_bytes(used),
+                "free_human": _human_bytes(free),
+                "total_human": _human_bytes(total),
+                "status": status,
+                "is_default": path == DEFAULT_STORAGE,
+            })
+        except Exception as e:
+            pools.append({
+                "path": path,
+                "label": os.path.basename(path) or path,
+                "error": str(e),
+                "status": "red",
+            })
+    return jsonify(pools)
+
+
+def _human_bytes(n):
+    for unit in ["B", "KB", "MB", "GB", "TB", "PB"]:
+        if abs(n) < 1024:
+            return f"{n:.1f} {unit}" if unit != "B" else f"{int(n)} {unit}"
+        n /= 1024
+    return f"{n:.1f} EB"
 
 
 @app.route("/api/storage/mkdir", methods=["POST"])
@@ -1048,23 +1136,24 @@ def search_coringa():
 @app.route("/api/storage/browse")
 @login_required
 def storage_browse():
-    """Lista subpastas de um caminho relativo para o seletor de destino do Coringa."""
+    """Lista subpastas de um caminho relativo, dentro do storage escolhido."""
     rel = request.args.get("path", "")
-    current = os.path.realpath(os.path.join(MEDIA_BASE, rel.lstrip("/")))
-    if not current.startswith(os.path.realpath(MEDIA_BASE)):
+    storage_root = resolve_storage(request.args.get("storage"))
+    current = os.path.realpath(os.path.join(storage_root, rel.lstrip("/")))
+    if not current.startswith(os.path.realpath(storage_root)):
         return jsonify({"error": "Caminho inválido"}), 400
     try:
         folders = sorted([
             d for d in os.listdir(current)
             if os.path.isdir(os.path.join(current, d))
         ])
-        rel_current = os.path.relpath(current, MEDIA_BASE)
+        rel_current = os.path.relpath(current, storage_root)
         if rel_current == ".":
             rel_current = ""
-        parent = os.path.relpath(os.path.dirname(current), MEDIA_BASE) if rel_current else None
+        parent = os.path.relpath(os.path.dirname(current), storage_root) if rel_current else None
         if parent == ".":
             parent = ""
-        return jsonify({"path": rel_current, "parent": parent, "folders": folders})
+        return jsonify({"path": rel_current, "parent": parent, "folders": folders, "storage": storage_root})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1084,8 +1173,9 @@ def add_coringa():
             return jsonify({"message": "Dados inválidos"}), 400
         items = [{"name": nome, "link": link}]
 
-    dest_abs = os.path.realpath(os.path.join(MEDIA_BASE, dest_rel.lstrip("/")))
-    if not dest_abs.startswith(os.path.realpath(MEDIA_BASE)):
+    storage_root = resolve_storage(data.get("storage"))
+    dest_abs = os.path.realpath(os.path.join(storage_root, dest_rel.lstrip("/")))
+    if not dest_abs.startswith(os.path.realpath(storage_root)):
         return jsonify({"message": "Destino inválido"}), 400
 
     jobs_criados = 0
@@ -1133,26 +1223,22 @@ def run_script():
 
     tipo = (script.get("tipo") or "").lower()
 
-    # Determine base path: use dest if provided, otherwise use tipo default
-    TYPE_BASES = {
-        "serie":         SERIES_BASE,
-        "filme":         FILMES_BASE,
-        "filmes_batch":  FILMES_BASE,
-        "desenho":       DESENHOS_BASE,
-        "anime":         ANIMES_BASE,
-        "desenho_serie": DESENHOS_SERIES_BASE,
-        "anime_serie":   ANIMES_SERIES_BASE,
-    }
-    if tipo not in TYPE_BASES:
-        return jsonify({"message": f"Tipo '{tipo}' não reconhecido. Use: {', '.join(TYPE_BASES)}"}), 400
+    storage_root = resolve_storage(data.get("storage"))
+
+    TIPOS_VALIDOS = ("serie", "filme", "filmes_batch", "desenho", "anime", "desenho_serie", "anime_serie")
+    if tipo not in TIPOS_VALIDOS:
+        return jsonify({"message": f"Tipo '{tipo}' não reconhecido. Use: {', '.join(TIPOS_VALIDOS)}"}), 400
 
     if dest_rel:
-        dest_abs = os.path.realpath(os.path.join(MEDIA_BASE, dest_rel.lstrip("/")))
-        if not dest_abs.startswith(os.path.realpath(MEDIA_BASE)):
+        # dest relativo é resolvido dentro do storage escolhido
+        dest_abs = os.path.realpath(os.path.join(storage_root, dest_rel.lstrip("/")))
+        if not dest_abs.startswith(os.path.realpath(storage_root)):
             return jsonify({"message": "Destino inválido"}), 400
         base_path = dest_abs
     else:
-        base_path = TYPE_BASES[tipo]
+        # filmes_batch usa a base de filmes
+        tipo_para_base = "filme" if tipo == "filmes_batch" else tipo
+        base_path = category_base(storage_root, tipo_para_base)
 
     # filmes_batch não usa campo "nome" no topo
     if tipo != "filmes_batch":
