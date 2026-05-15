@@ -894,12 +894,18 @@ def add_anime_serie_completa():
 # ================= STORAGE FILE MANAGEMENT ===============
 # =========================================================
 
-def _safe_path(relative):
-    """Resolve um caminho relativo dentro de MEDIA_BASE com segurança."""
-    full = os.path.realpath(os.path.join(MEDIA_BASE, relative.lstrip("/")))
-    if not full.startswith(os.path.realpath(MEDIA_BASE)):
+def _safe_path(relative, base=None):
+    """Resolve um caminho relativo dentro do storage base, com segurança.
+    Se base não for informado, usa MEDIA_BASE (legado)."""
+    b = base or MEDIA_BASE
+    full = os.path.realpath(os.path.join(b, (relative or "").lstrip("/")))
+    if not full.startswith(os.path.realpath(b)):
         return None
     return full
+
+
+# Pastas raiz por categoria — nunca podem ser deletadas pelo Explorer
+PROTECTED_CATEGORY_FOLDERS = set(CATEGORY_FOLDER.values()) | {"filmes", "series"}
 
 
 @app.route("/api/storage_pools")
@@ -954,8 +960,9 @@ def _human_bytes(n):
 @app.route("/api/storage/mkdir", methods=["POST"])
 @login_required
 def storage_mkdir():
-    data = request.json
-    path = _safe_path(data.get("path", ""))
+    data = request.json or {}
+    pool = resolve_storage(data.get("pool"))
+    path = _safe_path(data.get("path", ""), base=pool)
     if not path:
         return {"error": "Caminho inválido"}, 400
     if os.path.exists(path):
@@ -967,9 +974,10 @@ def storage_mkdir():
 @app.route("/api/storage/rename", methods=["POST"])
 @login_required
 def storage_rename():
-    data = request.json
-    src  = _safe_path(data.get("path", ""))
-    new_name = data.get("new_name", "").strip()
+    data = request.json or {}
+    pool = resolve_storage(data.get("pool"))
+    src = _safe_path(data.get("path", ""), base=pool)
+    new_name = (data.get("new_name") or "").strip()
     if not src or not new_name:
         return {"error": "Parâmetros inválidos"}, 400
     if "/" in new_name or "\\" in new_name:
@@ -977,7 +985,7 @@ def storage_rename():
     if not os.path.exists(src):
         return {"error": "Origem não encontrada"}, 404
     dst = os.path.join(os.path.dirname(src), new_name)
-    dst_safe = _safe_path(os.path.relpath(dst, MEDIA_BASE))
+    dst_safe = _safe_path(os.path.relpath(dst, pool), base=pool)
     if not dst_safe:
         return {"error": "Destino inválido"}, 400
     if os.path.exists(dst_safe):
@@ -989,13 +997,14 @@ def storage_rename():
 @app.route("/api/storage/folders")
 @login_required
 def storage_folders():
-    """Lista todas as pastas de primeiro nível dentro de /mnt/media para o seletor de destino."""
+    """Lista pastas de primeiro nível dentro do storage escolhido."""
+    pool = resolve_storage(request.args.get("pool"))
     try:
         folders = sorted([
-            d for d in os.listdir(MEDIA_BASE)
-            if os.path.isdir(os.path.join(MEDIA_BASE, d))
+            d for d in os.listdir(pool)
+            if os.path.isdir(os.path.join(pool, d))
         ])
-        return {"folders": folders}
+        return {"folders": folders, "pool": pool}
     except Exception as e:
         return {"folders": [], "error": str(e)}
 
@@ -1003,10 +1012,10 @@ def storage_folders():
 @app.route("/api/storage/move", methods=["POST"])
 @login_required
 def storage_move():
-    data = request.json
-    src = _safe_path(data.get("src", ""))
-    # dst_dir é a PASTA de destino; o item será movido para dentro dela
-    dst_dir = _safe_path(data.get("dst_dir", ""))
+    data = request.json or {}
+    pool = resolve_storage(data.get("pool"))
+    src = _safe_path(data.get("src", ""), base=pool)
+    dst_dir = _safe_path(data.get("dst_dir", ""), base=pool)
     if not src or not dst_dir:
         return {"error": "Caminho inválido"}, 400
     if not os.path.exists(src):
@@ -1020,6 +1029,48 @@ def storage_move():
     return {"status": "ok"}
 
 
+@app.route("/api/storage/delete", methods=["POST"])
+@login_required
+def storage_delete():
+    """Deleta uma PASTA (não arquivo) dentro do storage.
+
+    Travas de segurança:
+      - Só apaga diretórios; arquivos isolados são bloqueados.
+      - Nunca apaga o próprio storage root.
+      - Nunca apaga as pastas-categoria de primeiro nível (filmes, series, etc).
+    """
+    data = request.json or {}
+    pool = resolve_storage(data.get("pool"))
+    rel = (data.get("path") or "").strip().lstrip("/")
+    if not rel:
+        return {"error": "Caminho obrigatório"}, 400
+
+    target = _safe_path(rel, base=pool)
+    if not target:
+        return {"error": "Caminho inválido"}, 400
+    if not os.path.exists(target):
+        return {"error": "Pasta não encontrada"}, 404
+    if os.path.isfile(target):
+        return {"error": "Não é permitido apagar arquivos individuais — só pastas"}, 400
+
+    # Bloqueia raiz e pastas de categoria
+    real_target = os.path.realpath(target)
+    real_pool = os.path.realpath(pool)
+    if real_target == real_pool:
+        return {"error": "Não é permitido apagar a raiz do storage"}, 400
+    # Se a pasta é filha direta do pool e o nome é uma categoria protegida → bloqueia
+    parent = os.path.dirname(real_target)
+    leaf = os.path.basename(real_target)
+    if parent == real_pool and leaf in PROTECTED_CATEGORY_FOLDERS:
+        return {"error": f"Não é permitido apagar a pasta principal '{leaf}'"}, 400
+
+    try:
+        shutil.rmtree(target)
+        return {"status": "ok"}
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
 # =========================================================
 # ======================= STORAGE =========================
 # =========================================================
@@ -1030,10 +1081,11 @@ from flask import send_file
 @app.route("/storage/<path:subpath>")
 @login_required
 def storage(subpath=""):
+    pool = resolve_storage(request.args.get("pool"))
+    real_pool = os.path.realpath(pool)
 
-    current_path = os.path.join(MEDIA_BASE, subpath)
-
-    if not os.path.abspath(current_path).startswith(os.path.abspath(MEDIA_BASE)):
+    current_path = os.path.join(pool, subpath)
+    if not os.path.realpath(current_path).startswith(real_pool):
         return "Acesso inválido"
 
     if os.path.exists(current_path) and os.path.isfile(current_path):
@@ -1057,14 +1109,26 @@ def storage(subpath=""):
                         size_str = f"{b/1024:.0f} KB"
                 except Exception:
                     size_str = ""
+
+            # Flag: este item pode ser deletado?
+            # - Não pode se for arquivo
+            # - Não pode se for pasta-categoria na raiz do storage
+            can_delete = False
+            if is_dir:
+                rel_full = os.path.relpath(full, real_pool)
+                parts = rel_full.split(os.sep)
+                if not (len(parts) == 1 and parts[0] in PROTECTED_CATEGORY_FOLDERS):
+                    can_delete = True
+
             items.append({
                 "name": item,
                 "is_dir": is_dir,
-                "size": size_str
+                "size": size_str,
+                "can_delete": can_delete,
             })
 
     items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
-    
+
     if subpath:
         parent_dir = os.path.dirname(subpath)
         parent = f"/{parent_dir}" if parent_dir else ""
@@ -1075,7 +1139,8 @@ def storage(subpath=""):
         "storage.html",
         items=items,
         current=subpath,
-        parent=parent
+        parent=parent,
+        pool=pool,
     )
 
 

@@ -1,22 +1,30 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-    <div>
+<div class="mb-6 flex flex-col md:flex-row md:items-start justify-between gap-4">
+    <div class="flex-1">
         <h1 class="text-3xl font-bold text-white flex items-center gap-3">
             <i data-lucide="database" class="text-blue-500"></i> Explorer Storage
         </h1>
         <p class="text-slate-400 font-mono text-xs mt-1 bg-slate-800/30 inline-block px-2 py-1 rounded">
-            Caminho: /{{ current }}
+            Caminho: {{ pool }}/{{ current }}
         </p>
     </div>
-    <div class="flex items-center gap-3">
+    <div class="flex flex-wrap items-center gap-3">
+        <!-- Pool picker -->
+        <div class="flex items-center gap-2 bg-slate-800/40 border border-slate-700 rounded-xl px-3 py-1.5">
+            <i data-lucide="hard-drive" class="w-4 h-4 text-blue-400"></i>
+            <select id="poolSelect" onchange="trocarPool()"
+                class="bg-transparent text-white text-sm font-bold outline-none cursor-pointer">
+                <option value="">Carregando…</option>
+            </select>
+        </div>
         <button onclick="openMkdir()"
             class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all">
             <i data-lucide="folder-plus" class="w-4 h-4"></i> Nova Pasta
         </button>
         {% if parent is not none %}
-        <a href="/storage{{ parent }}"
+        <a href="/storage{{ parent }}?pool={{ pool|urlencode }}"
             class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-blue-400 px-4 py-2 rounded-xl border border-slate-700 transition-all text-sm font-bold">
             <i data-lucide="chevron-left" class="w-4 h-4"></i> Voltar
         </a>
@@ -52,14 +60,15 @@
         <div class="storage-item grid grid-cols-12 p-4 hover:bg-slate-800/30 transition-all items-center group hidden"
              data-name="{{ item.name }}"
              data-path="{% if current %}{{ current }}/{% endif %}{{ item.name }}"
-             data-isdir="{{ 'true' if item.is_dir else 'false' }}">
+             data-isdir="{{ 'true' if item.is_dir else 'false' }}"
+             data-candelete="{{ 'true' if item.can_delete else 'false' }}">
 
             <div class="col-span-7 md:col-span-8 flex items-center gap-4">
                 {% if item.is_dir %}
                 <div class="p-2 bg-emerald-500/10 rounded-lg flex-shrink-0">
                     <i data-lucide="folder" class="w-5 h-5 text-emerald-500 fill-emerald-500/20"></i>
                 </div>
-                <a href="/storage/{% if current %}{{ current }}/{% endif %}{{ item.name }}"
+                <a href="/storage/{% if current %}{{ current }}/{% endif %}{{ item.name }}?pool={{ pool|urlencode }}"
                     class="text-emerald-400 font-semibold hover:underline decoration-emerald-500/40 underline-offset-4 truncate block">
                     {{ item.name }}
                 </a>
@@ -93,6 +102,13 @@
                     title="Mover">
                     <i data-lucide="move" class="w-3.5 h-3.5"></i>
                 </button>
+                {% if item.can_delete %}
+                <button onclick="confirmDelete(this)"
+                    class="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                    title="Apagar pasta">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                </button>
+                {% endif %}
             </div>
         </div>
         {% endfor %}
@@ -117,7 +133,7 @@
         <h3 class="text-white font-bold text-lg mb-1 flex items-center gap-2">
             <i data-lucide="folder-plus" class="text-emerald-400 w-5 h-5"></i> Nova Pasta
         </h3>
-        <p class="text-slate-500 text-xs mb-4">Será criada em: <span class="text-slate-300 font-mono">/{{ current }}/</span></p>
+        <p class="text-slate-500 text-xs mb-4">Será criada em: <span class="text-slate-300 font-mono">{{ pool }}/{{ current }}/</span></p>
         <input type="text" id="mkdir-name" placeholder="Nome da pasta..."
             class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-emerald-500 outline-none mb-4"
             onkeydown="if(event.key==='Enter') confirmMkdir()">
@@ -155,20 +171,20 @@
             Movendo: <span id="move-src-name" class="text-amber-300 font-mono font-bold"></span>
         </p>
 
-        <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2">Pastas rápidas</p>
+        <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2">Pastas rápidas <span class="text-slate-600 normal-case">(no storage atual)</span></p>
         <div id="move-folder-btns" class="flex flex-wrap gap-2 mb-4">
             <span class="text-slate-600 text-xs italic">Carregando...</span>
         </div>
 
         <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2">Destino (pasta)</p>
         <div class="relative mb-1">
-            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-mono">/mnt/media/</span>
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-mono">{{ pool }}/</span>
             <input type="text" id="move-dst"
                 placeholder="animeseries/Jujutsu Kaisen"
-                class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl pl-[90px] pr-4 py-3 text-white font-mono text-sm focus:ring-2 focus:ring-amber-500 outline-none"
+                class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl pl-[120px] pr-4 py-3 text-white font-mono text-sm focus:ring-2 focus:ring-amber-500 outline-none"
                 onkeydown="if(event.key==='Enter') confirmMove()">
         </div>
-        <p class="text-[10px] text-slate-600 mb-5">O item será movido para <strong>dentro</strong> da pasta informada.</p>
+        <p class="text-[10px] text-slate-600 mb-5">O item será movido para <strong>dentro</strong> da pasta informada, no mesmo storage.</p>
 
         <div class="flex gap-3">
             <button onclick="closeModals()" class="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-400 hover:bg-slate-800 transition-all text-sm font-bold">Cancelar</button>
@@ -181,10 +197,41 @@
 
 <script>
     const currentPath = "{{ current }}";
+    const currentPool = "{{ pool }}";
     const itemsPerPage = 15;
     let currentPage = 1;
     const allItemElements = Array.from(document.querySelectorAll('.storage-item'));
     let filteredItems = [...allItemElements];
+
+    // ── Pool picker ──
+    async function carregarPools() {
+        const sel = document.getElementById('poolSelect');
+        try {
+            const r = await fetch('/api/storage_pools');
+            const pools = await r.json();
+            if (!Array.isArray(pools) || !pools.length) {
+                sel.innerHTML = '<option value="">Nenhum storage</option>';
+                return;
+            }
+            sel.innerHTML = '';
+            pools.forEach(p => {
+                const o = document.createElement('option');
+                o.value = p.path;
+                o.textContent = `${p.label} — ${p.used_pct}% usado (${p.free_human} livres)`;
+                sel.appendChild(o);
+            });
+            sel.value = currentPool;
+        } catch (e) {
+            sel.innerHTML = '<option value="">Erro ao carregar</option>';
+        }
+    }
+    function trocarPool() {
+        const sel = document.getElementById('poolSelect');
+        const newPool = sel.value;
+        if (!newPool || newPool === currentPool) return;
+        // Ao trocar de storage, volta pra raiz do novo
+        location.href = '/storage?pool=' + encodeURIComponent(newPool);
+    }
 
     // ── Paginação ──
     function renderPage() {
@@ -238,23 +285,22 @@
         document.getElementById('move-dst').value = '';
         document.getElementById('modal-move').classList.remove('hidden');
 
-        // Carregar pastas disponíveis
         const container = document.getElementById('move-folder-btns');
         container.innerHTML = '<span class="text-slate-600 text-xs italic">Carregando...</span>';
         try {
-            const r = await fetch('/api/storage/folders');
+            const r = await fetch('/api/storage/folders?pool=' + encodeURIComponent(currentPool));
             const d = await r.json();
             container.innerHTML = '';
             (d.folders || []).forEach(f => {
-                const btn = document.createElement('button');
-                btn.className = 'px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-700 text-slate-300 hover:bg-amber-500/20 hover:border-amber-500 hover:text-amber-300 transition-all';
-                btn.innerText = f;
-                btn.onclick = () => {
+                const b = document.createElement('button');
+                b.className = 'px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-700 text-slate-300 hover:bg-amber-500/20 hover:border-amber-500 hover:text-amber-300 transition-all';
+                b.innerText = f;
+                b.onclick = () => {
                     document.getElementById('move-dst').value = f;
-                    container.querySelectorAll('button').forEach(b => b.classList.remove('bg-amber-500/20','border-amber-500','text-amber-300'));
-                    btn.classList.add('bg-amber-500/20','border-amber-500','text-amber-300');
+                    container.querySelectorAll('button').forEach(x => x.classList.remove('bg-amber-500/20','border-amber-500','text-amber-300'));
+                    b.classList.add('bg-amber-500/20','border-amber-500','text-amber-300');
                 };
-                container.appendChild(btn);
+                container.appendChild(b);
             });
         } catch(e) {
             container.innerHTML = '<span class="text-red-500 text-xs">Erro ao carregar pastas</span>';
@@ -268,7 +314,7 @@
         const name = document.getElementById('mkdir-name').value.trim();
         if (!name) return;
         const path = (currentPath ? currentPath + '/' : '') + name;
-        const r = await fetch('/api/storage/mkdir', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({path}) });
+        const r = await fetch('/api/storage/mkdir', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({path, pool: currentPool}) });
         const d = await r.json();
         if (!r.ok) { alert(d.error || 'Erro ao criar pasta'); return; }
         location.reload();
@@ -277,7 +323,7 @@
     async function confirmRename() {
         const newName = document.getElementById('rename-new-name').value.trim();
         if (!newName || newName === activeItemName) { closeModals(); return; }
-        const r = await fetch('/api/storage/rename', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({path: activeItemPath, new_name: newName}) });
+        const r = await fetch('/api/storage/rename', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({path: activeItemPath, new_name: newName, pool: currentPool}) });
         const d = await r.json();
         if (!r.ok) { alert(d.error || 'Erro ao renomear'); return; }
         location.reload();
@@ -291,7 +337,7 @@
         btn.disabled = true;
         btn.innerHTML = '<svg class="animate-spin w-4 h-4 inline mr-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg> Movendo...';
 
-        const r = await fetch('/api/storage/move', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({src: activeItemPath, dst_dir}) });
+        const r = await fetch('/api/storage/move', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({src: activeItemPath, dst_dir, pool: currentPool}) });
         const d = await r.json();
 
         if (!r.ok) {
@@ -307,11 +353,22 @@
         setTimeout(() => location.reload(), 900);
     }
 
-    // Fecha modal ao clicar fora
+    async function confirmDelete(btn) {
+        const row = btn.closest('.storage-item');
+        const path = row.dataset.path;
+        const name = row.dataset.name;
+        if (!confirm(`Apagar a pasta "${name}" e TODO o conteúdo dela?\n\nEssa ação não pode ser desfeita.`)) return;
+        const r = await fetch('/api/storage/delete', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({path, pool: currentPool}) });
+        const d = await r.json();
+        if (!r.ok) { alert(d.error || 'Erro ao apagar'); return; }
+        location.reload();
+    }
+
     ['modal-mkdir','modal-rename','modal-move'].forEach(id => {
         document.getElementById(id).addEventListener('click', e => { if (e.target === document.getElementById(id)) closeModals(); });
     });
 
+    carregarPools();
     renderPage();
     lucide.createIcons();
 </script>
