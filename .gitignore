@@ -13,3 +13,4 @@ __pycache__/
 # JSONs de Script Runner — contém URLs com tokens auth do provedor M3U
 data/series/
 data/filmes/
+data/servers/

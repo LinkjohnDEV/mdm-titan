@@ -35,6 +35,7 @@
     <div class="bg-slate-900/60 border border-slate-700/50 rounded-2xl p-6 space-y-6">
       <div>
         <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">1 — Pesquisar conteúdo</p>
+        {% include "_server_picker.html" %}
         <div class="relative">
           <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"></i>
           <input id="searchInput" type="text" placeholder="Ex: Jujutsu Kaisen S01E01, Strange Things..."
@@ -259,7 +260,9 @@ document.getElementById("searchInput").addEventListener("input", function() {
 });
 
 async function buscar(q) {
-  const res = await fetch("/search_coringa", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({query: q}) });
+  const sid = getSelectedServerId();
+  if (!sid) return;
+  const res = await fetch("/search_coringa", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({query: q, server_id: sid}) });
   renderResultados(await res.json());
 }
 

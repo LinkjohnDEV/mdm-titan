@@ -59,7 +59,7 @@
 | Webhooks | `/webhooks` | — |
 | Updates | `/updates` | — (changelog) |
 | Coringa | `/coringa` | qualquer pasta em `/mnt/media` |
-| M3U | `/m3u` | — (upload dados.txt) |
+| M3U | `/m3u` | — (gerenciador multi-servidor) |
 | Cleanup | `/cleanup` | — (limpar arquivos incompletos) |
 | Usuários | `/usuarios` | — (admin only) |
 | Torrents | `/torrents` | — (qBittorrent integration) |
@@ -158,15 +158,38 @@ Download avulso de qualquer link para qualquer pasta.
 
 ---
 
-## Indexer (`indexer.py`)
+## Indexer multi-server (`indexer.py`)
 
-SQLite in-memory que carrega todo o `dados.txt` na memória para buscas em <100ms.
+SQLite in-memory que carrega **N arquivos M3U** em paralelo, um por servidor cadastrado em `m3u_servers`. Cada entrada do índice tem um `server_id`.
 
-- Classifica por URL: `/movie/` → filme, `/series/` → série
-- Classifica por `group-title` para desenhos, animes
-- `search_all(q)` → retorna `{nome, link, logo, group, tipo}`
-- **Auto-reindex** quando `dados.txt` é modificado
-- Forçar reindex: `POST /api/reindex`
+- Inicialização: `indexer.init(BASE_DIR, callback)` — o callback retorna os servers ativos do Postgres.
+- Detecção de mudança por arquivo: cada server tem seu próprio mtime/size cached. Auto-reindex quando o arquivo é tocado.
+- Buscas aceitam `server_id` opcional: `search_filmes(q, server_id=X)`, `search_series`, `search_all`, etc.
+- Ações:
+  - `indexer.reindex(server_id=X)` — força reindex de 1 server (sem arg = todos)
+  - `indexer.drop_server(id)` — remove um server do índice (chamado no DELETE)
+- Classificação por URL (`/movie/` → filme, `/series/` → série) e fallback por `group-title`.
+
+### Servidores M3U
+Tabela `m3u_servers(id, nome, slug, filename, linhas, tamanho_bytes, ativo, atualizado_em, criado_em)`.
+
+Arquivos físicos em `data/servers/{slug}.txt`. Slug é gerado automaticamente a partir do nome (ASCII lowercase, sem caracteres especiais).
+
+### Rotas (`/m3u` é o gerenciador admin)
+| Método | Rota | Função |
+|---|---|---|
+| GET | `/api/m3u_servers` | lista todos |
+| POST | `/api/m3u_servers` | cria (multipart: nome + file) |
+| PUT | `/api/m3u_servers/<id>` | renomeia |
+| POST | `/api/m3u_servers/<id>/upload` | substitui arquivo |
+| POST | `/api/m3u_servers/<id>/toggle` | pausa/ativa |
+| POST | `/api/m3u_servers/<id>/reindex` | força reindex |
+| DELETE | `/api/m3u_servers/<id>` | apaga (remove arquivo + dropa do índice) |
+
+Endpoint legado `POST /api/upload_m3u` mantido pra retrocompat — sobrescreve o servidor com slug `principal`.
+
+### Dropdown obrigatório
+Em `/filmes`, `/series`, `/coringa` há um partial `_server_picker.html` que exige escolha de servidor antes de buscar. A seleção fica salva em `localStorage.mdm.selectedServerId`.
 
 ---
 
@@ -354,6 +377,7 @@ Já incluído em: `filmes.html`, `series.html`, `desenhos.html`, `animes.html`, 
 
 | Versão | Feature |
 |--------|---------|
+| v2.5 | M3U multi-servidor — gerenciador em `/m3u`, indexer com `server_id`, dropdown obrigatório nas páginas de busca, /desenhos e /animes em pausa |
 | v2.4 | Storage Pools — multi-HD com card colorido em todas as páginas de download (auto-discovery /mnt/media*) |
 | v2.3 | Página `/updates` (changelog público com markdown, agrupado por dia) |
 | v2.2 | Webhook WhatsApp via Evolution API (multi-destino, chips UI), edição inline de webhooks, migração DB pro host 10.0.1.176 |

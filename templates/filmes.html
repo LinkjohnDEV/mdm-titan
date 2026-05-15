@@ -13,6 +13,7 @@
 
         <div>
             <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Pesquisar conteúdo</p>
+            {% include "_server_picker.html" %}
             <div class="relative">
                 <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"></i>
                 <input type="text" id="search_movie" placeholder="Digite o nome do filme..."
@@ -61,7 +62,9 @@
         const box = document.getElementById("results");
         if (q.length < 2) { box.classList.add("hidden"); return; }
         searchTimer = setTimeout(() => {
-            fetch(`/search_filme?q=${encodeURIComponent(q)}`)
+            const sid = getSelectedServerId();
+            if (!sid) { return; }
+            fetch(`/search_filme?q=${encodeURIComponent(q)}&server_id=${sid}`)
                 .then(r => r.json())
                 .then(data => renderResults(data, box));
         }, 300);

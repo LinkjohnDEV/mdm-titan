@@ -15,6 +15,8 @@
     <div class="lg:col-span-7 space-y-6">
         <div class="bg-slate-900/60 border border-slate-700/50 p-6 rounded-2xl space-y-5">
 
+            {% include "_server_picker.html" %}
+
             <div>
                 <label class="block text-xs font-bold text-slate-400 mb-2 uppercase">Nome Oficial da Série</label>
                 <input type="text" id="sc_serieNome" placeholder="Ex: Manifest"
@@ -82,10 +84,10 @@
         </div>
     </div>
 
-    <div class="mt-6">
-        {% include "_storage_picker.html" %}
-    </div>
+</div>
 
+<div class="mt-6">
+    {% include "_storage_picker.html" %}
 </div>
 
 <script>
@@ -100,7 +102,9 @@
         sc_timer = setTimeout(() => {
             if (sc_ctrl) sc_ctrl.abort();
             sc_ctrl = new AbortController();
-            fetch("/buscar_series?q=" + encodeURIComponent(termo), { signal: sc_ctrl.signal })
+            const sid = getSelectedServerId();
+            if (!sid) return;
+            fetch("/buscar_series?q=" + encodeURIComponent(termo) + "&server_id=" + sid, { signal: sc_ctrl.signal })
                 .then(r => r.json())
                 .then(data => sc_renderResultados(data.results || [], box))
                 .catch(err => { if (err.name !== "AbortError") console.error(err); });

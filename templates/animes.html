@@ -123,10 +123,6 @@
             </div>
         </div>
     </div>
-
-    <div class="mt-6">
-        {% include "_storage_picker.html" %}
-    </div>
 </div>
 
 <script>
@@ -169,9 +165,7 @@
     function startAnimeFilme(force = false) {
         const name = document.getElementById("anime_filme_nome").value, link = document.getElementById("anime_filme_link").value;
         if (!name || !link) { alert("Preencha o nome e o link antes de iniciar."); return; }
-        const storage = getSelectedStorage();
-        if (!storage) { alert("Escolha um storage de destino."); return; }
-        fetch("/add_anime_filme", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, link, force, storage }) })
+        fetch("/add_anime_filme", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, link, force }) })
             .then(async res => { const data = await res.json(); if (res.status === 409) { if (confirm(data.message)) startAnimeFilme(true); return null; } if (!res.ok) { alert(data.message || data.error || "Erro."); return null; } return data; })
             .then(data => { if (data) window.location.href = "/downloads"; });
     }
@@ -241,8 +235,7 @@
         const nome = document.getElementById("as_serieNome").value.trim();
         if (!nome) { alert("Preencha o nome do anime."); return; }
         if (!as_fila.length) { alert("Adicione pelo menos uma temporada."); return; }
-        if (!getSelectedStorage()) { alert("Escolha um storage de destino."); return; }
-        fetch("/add_anime_serie_completa", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nome, seasons: as_fila, force, storage: getSelectedStorage() }) })
+        fetch("/add_anime_serie_completa", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: nome, seasons: as_fila, force }) })
             .then(async res => { const data = await res.json(); if (res.status === 409) { if (confirm(data.message)) as_iniciarDownload(true); return null; } if (!res.ok) { alert(data.message || data.error || "Erro."); return null; } return data; })
             .then(data => { if (data) window.location.href = "/downloads"; });
     }

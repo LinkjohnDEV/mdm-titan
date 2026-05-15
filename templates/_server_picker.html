@@ -1,0 +1,58 @@
+{# Dropdown obrigatório de servidor M3U.
+   Inclua via {% include "_server_picker.html" %} antes do campo de busca da página.
+   Expõe globals JS:
+     - selectedServerId (int | null)
+     - getSelectedServerId()
+     - onServerChange(cb)
+#}
+<div class="mb-4 bg-[#0b0f1a] border border-slate-800 rounded-xl p-3 flex items-center gap-3">
+    <i data-lucide="server" class="w-4 h-4 text-blue-400 flex-shrink-0"></i>
+    <label class="text-xs font-bold text-slate-500 uppercase tracking-widest flex-shrink-0">Servidor M3U:</label>
+    <select id="serverPickerSelect" onchange="_onServerPicked()"
+        class="flex-1 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none">
+        <option value="">Carregando…</option>
+    </select>
+</div>
+
+<script>
+    let selectedServerId = null;
+    const _serverChangeCbs = [];
+    function getSelectedServerId() { return selectedServerId; }
+    function onServerChange(cb) { if (typeof cb === "function") _serverChangeCbs.push(cb); }
+
+    function _onServerPicked() {
+        const sel = document.getElementById("serverPickerSelect");
+        const v = sel.value;
+        selectedServerId = v ? parseInt(v, 10) : null;
+        try { if (v) localStorage.setItem("mdm.selectedServerId", v); } catch (e) {}
+        _serverChangeCbs.forEach(cb => { try { cb(selectedServerId); } catch (e) { console.error(e); } });
+    }
+
+    async function _loadServerPicker() {
+        const sel = document.getElementById("serverPickerSelect");
+        try {
+            const res = await fetch("/api/m3u_servers");
+            const servers = (await res.json()).filter(s => s.ativo);
+            if (!servers.length) {
+                sel.innerHTML = '<option value="">Nenhum servidor cadastrado — vá em /m3u</option>';
+                return;
+            }
+            const remembered = (() => { try { return localStorage.getItem("mdm.selectedServerId"); } catch (e) { return null; } })();
+            sel.innerHTML = "";
+            servers.forEach(s => {
+                const opt = document.createElement("option");
+                opt.value = s.id;
+                opt.textContent = `${s.nome} — ${(s.linhas||0).toLocaleString("pt-BR")} entradas`;
+                sel.appendChild(opt);
+            });
+            let pickId = servers[0].id;
+            if (remembered && servers.find(s => String(s.id) === remembered)) pickId = parseInt(remembered, 10);
+            sel.value = pickId;
+            _onServerPicked();
+        } catch (e) {
+            sel.innerHTML = '<option value="">Erro ao carregar</option>';
+        }
+    }
+
+    _loadServerPicker();
+</script>

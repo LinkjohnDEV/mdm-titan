@@ -86,7 +86,26 @@ def inject_user_info():
 # ==============================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_FILE = os.path.join(BASE_DIR, "data", "dados.txt")
+DATA_FILE = os.path.join(BASE_DIR, "data", "dados.txt")  # legado — usado como fallback se não houver server cadastrado
+
+# Pasta onde os arquivos M3U de cada server são guardados
+SERVERS_DIR = os.path.join(BASE_DIR, "data", "servers")
+os.makedirs(SERVERS_DIR, exist_ok=True)
+
+
+def _load_m3u_servers_for_indexer():
+    """Lê servers ativos do Postgres pra o indexer. Retorna lista de dicts."""
+    try:
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, nome, slug, filename, ativo FROM m3u_servers WHERE ativo=true ORDER BY id")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"[indexer] erro carregando servers: {e}")
+        return []
 
 # Storage pools — descobertos automaticamente em /mnt/media*
 import glob as _glob
@@ -134,8 +153,8 @@ ANIMES_BASE = category_base(DEFAULT_STORAGE, "anime")
 ANIMES_SERIES_BASE = category_base(DEFAULT_STORAGE, "anime_serie")
 MEDIA_BASE = DEFAULT_STORAGE
 
-# Inicializa indexador de busca
-indexer.init(DATA_FILE)
+# Inicializa indexador de busca multi-server
+indexer.init(BASE_DIR, _load_m3u_servers_for_indexer)
 
 
 # =========================================================
@@ -338,12 +357,21 @@ def series_page():
     return render_template("series.html")
 
 
+def _q_server_id():
+    """Lê server_id da query string. Aceita string vazia / inválida = None (todos)."""
+    raw = request.args.get("server_id")
+    try:
+        return int(raw) if raw else None
+    except (TypeError, ValueError):
+        return None
+
+
 @app.route("/buscar_series")
 def buscar_series():
     termo = request.args.get("q", "").strip()
     if len(termo) < 2:
         return {"results": []}
-    resultados = indexer.search_series(termo)
+    resultados = indexer.search_series(termo, server_id=_q_server_id())
     return {"results": resultados}
 
 
@@ -459,7 +487,7 @@ def search_filme():
     query = request.args.get("q", "").strip()
     if len(query) < 2:
         return jsonify([])
-    resultados = indexer.search_filmes(query)
+    resultados = indexer.search_filmes(query, server_id=_q_server_id())
     return jsonify(resultados)
 
 
@@ -553,7 +581,7 @@ def add_filme():
 @app.route("/desenhos")
 @login_required
 def desenhos_page():
-    return render_template("desenhos.html")
+    return render_template("paused.html", page_name="Desenhos")
 
 
 @app.route("/search_desenho_filme")
@@ -561,7 +589,7 @@ def search_desenho_filme():
     query = request.args.get("q", "").strip()
     if len(query) < 2:
         return jsonify([])
-    return jsonify(indexer.search_desenhos_filmes(query))
+    return jsonify(indexer.search_desenhos_filmes(query, server_id=_q_server_id()))
 
 
 @app.route("/search_desenho_serie")
@@ -569,7 +597,7 @@ def search_desenho_serie():
     termo = request.args.get("q", "").strip()
     if len(termo) < 2:
         return {"results": []}
-    return {"results": indexer.search_desenhos_series(termo)}
+    return {"results": indexer.search_desenhos_series(termo, server_id=_q_server_id())}
 
 
 @app.route("/add_desenho_filme", methods=["POST"])
@@ -711,7 +739,7 @@ def add_desenho_serie_completa():
 @app.route("/animes")
 @login_required
 def animes_page():
-    return render_template("animes.html")
+    return render_template("paused.html", page_name="Animes")
 
 
 @app.route("/search_anime_filme")
@@ -719,7 +747,7 @@ def search_anime_filme():
     query = request.args.get("q", "").strip()
     if len(query) < 2:
         return jsonify([])
-    return jsonify(indexer.search_animes_filmes(query))
+    return jsonify(indexer.search_animes_filmes(query, server_id=_q_server_id()))
 
 
 @app.route("/search_anime_serie")
@@ -727,7 +755,7 @@ def search_anime_serie():
     termo = request.args.get("q", "").strip()
     if len(termo) < 2:
         return {"results": []}
-    return {"results": indexer.search_animes_series(termo)}
+    return {"results": indexer.search_animes_series(termo, server_id=_q_server_id())}
 
 
 @app.route("/add_anime_filme", methods=["POST"])
@@ -1125,11 +1153,14 @@ def coringa():
 @app.route("/search_coringa", methods=["POST"])
 @login_required
 def search_coringa():
-    data = request.json
+    data = request.json or {}
     query = (data.get("query") or "").strip()
     if not query:
         return jsonify([])
-    resultados = indexer.search_all(query, limit=100)
+    sid = data.get("server_id")
+    try: sid = int(sid) if sid else None
+    except (TypeError, ValueError): sid = None
+    resultados = indexer.search_all(query, limit=100, server_id=sid)
     return jsonify(resultados)
 
 
@@ -1815,33 +1846,232 @@ def delete_user(id):
 
 
 # =========================================================
-# ======================= UPLOAD M3U ======================
+# ======================= M3U SERVERS =====================
 # =========================================================
+
+import unicodedata as _ud
+
+def _slugify(s):
+    """Slug ASCII lowercase, sem espaços nem caracteres especiais."""
+    if not s:
+        return ""
+    s = _ud.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+    s = re.sub(r"[^a-zA-Z0-9]+", "_", s).strip("_").lower()
+    return s or "server"
+
+
+def _refresh_server_file_stats(server_id, filepath):
+    """Atualiza linhas/tamanho/atualizado_em do server no DB depois de salvar o arquivo."""
+    try:
+        size = os.path.getsize(filepath) if os.path.exists(filepath) else 0
+        lines = 0
+        if os.path.exists(filepath):
+            with open(filepath, "rb") as f:
+                for _ in f: lines += 1
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE m3u_servers SET linhas=%s, tamanho_bytes=%s, atualizado_em=NOW() WHERE id=%s",
+            (lines, size, server_id),
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"[m3u] erro atualizando stats do server {server_id}: {e}")
+
 
 @app.route("/m3u")
 @admin_required
 def m3u_page():
     return render_template("m3u.html")
 
+
+@app.route("/api/m3u_servers", methods=["GET"])
+@login_required
+def listar_m3u_servers():
+    try:
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, nome, slug, filename, linhas, tamanho_bytes, ativo, atualizado_em, criado_em FROM m3u_servers ORDER BY id")
+        rows = cur.fetchall()
+        for r in rows:
+            for k in ("atualizado_em", "criado_em"):
+                if r.get(k) and hasattr(r[k], "isoformat"):
+                    r[k] = r[k].isoformat()
+        cur.close()
+        conn.close()
+        return jsonify(rows)
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
+@app.route("/api/m3u_servers", methods=["POST"])
+@admin_required
+def criar_m3u_server():
+    """Cria um server novo. Recebe multipart: 'nome' + 'file' (.txt/.m3u)."""
+    nome = (request.form.get("nome") or "").strip()
+    if not nome:
+        return {"error": "Nome obrigatório"}, 400
+    if "file" not in request.files or request.files["file"].filename == "":
+        return {"error": "Arquivo M3U obrigatório"}, 400
+    f = request.files["file"]
+    if not (f.filename.endswith(".txt") or f.filename.endswith(".m3u")):
+        return {"error": "Formato inválido (use .txt ou .m3u)"}, 400
+
+    slug = _slugify(nome)
+    filename_rel = f"data/servers/{slug}.txt"
+    filepath = os.path.join(BASE_DIR, filename_rel)
+
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM m3u_servers WHERE nome=%s OR slug=%s", (nome, slug))
+        if cur.fetchone():
+            cur.close(); conn.close()
+            return {"error": "Já existe um server com esse nome"}, 409
+
+        f.save(filepath)
+        size = os.path.getsize(filepath)
+        lines = 0
+        with open(filepath, "rb") as fh:
+            for _ in fh: lines += 1
+
+        cur.execute(
+            "INSERT INTO m3u_servers (nome, slug, filename, linhas, tamanho_bytes) VALUES (%s,%s,%s,%s,%s) RETURNING id",
+            (nome, slug, filename_rel, lines, size),
+        )
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        indexer.reindex(server_id=new_id)
+        return {"status": "ok", "id": new_id}
+    except Exception as e:
+        if 'conn' in locals() and conn: conn.rollback()
+        return {"error": str(e)}, 500
+
+
+@app.route("/api/m3u_servers/<int:sid>/upload", methods=["POST"])
+@admin_required
+def upload_m3u_server(sid):
+    """Substitui o arquivo M3U de um server existente."""
+    if "file" not in request.files or request.files["file"].filename == "":
+        return {"error": "Arquivo M3U obrigatório"}, 400
+    f = request.files["file"]
+    if not (f.filename.endswith(".txt") or f.filename.endswith(".m3u")):
+        return {"error": "Formato inválido (use .txt ou .m3u)"}, 400
+
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM m3u_servers WHERE id=%s", (sid,))
+    server = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not server:
+        return {"error": "Server não encontrado"}, 404
+
+    filepath = os.path.join(BASE_DIR, server["filename"])
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    f.save(filepath)
+    _refresh_server_file_stats(sid, filepath)
+    indexer.reindex(server_id=sid)
+    return {"status": "ok"}
+
+
+@app.route("/api/m3u_servers/<int:sid>", methods=["PUT"])
+@admin_required
+def renomear_m3u_server(sid):
+    data = request.json or {}
+    nome = (data.get("nome") or "").strip()
+    if not nome:
+        return {"error": "Nome obrigatório"}, 400
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("UPDATE m3u_servers SET nome=%s WHERE id=%s", (nome, sid))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return {"status": "ok"}
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
+@app.route("/api/m3u_servers/<int:sid>/toggle", methods=["POST"])
+@admin_required
+def toggle_m3u_server(sid):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE m3u_servers SET ativo = NOT ativo WHERE id=%s RETURNING ativo", (sid,))
+    row = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+    if row is None:
+        return {"error": "Server não encontrado"}, 404
+    # Re-sincroniza o indexer (vai dropar entries do server se desativado)
+    indexer.reindex()
+    return {"status": "ok", "ativo": row[0]}
+
+
+@app.route("/api/m3u_servers/<int:sid>", methods=["DELETE"])
+@admin_required
+def deletar_m3u_server(sid):
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT filename FROM m3u_servers WHERE id=%s", (sid,))
+    server = cur.fetchone()
+    if not server:
+        cur.close(); conn.close()
+        return {"error": "Server não encontrado"}, 404
+    cur.execute("DELETE FROM m3u_servers WHERE id=%s", (sid,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    # Apaga o arquivo do disco
+    try:
+        filepath = os.path.join(BASE_DIR, server["filename"])
+        if os.path.exists(filepath):
+            os.remove(filepath)
+    except Exception as e:
+        print(f"[m3u] erro removendo arquivo do server {sid}: {e}")
+    indexer.drop_server(sid)
+    return {"status": "ok"}
+
+
+@app.route("/api/m3u_servers/<int:sid>/reindex", methods=["POST"])
+@admin_required
+def reindex_m3u_server(sid):
+    stats = indexer.reindex(server_id=sid)
+    return {"status": "ok", "stats": stats}
+
+
+# Endpoint legado — mantido pra retrocompat (sobrescreve o server "Principal").
 @app.route("/api/upload_m3u", methods=["POST"])
 @admin_required
-def upload_m3u():
-    if 'file' not in request.files:
+def upload_m3u_legacy():
+    if "file" not in request.files or request.files["file"].filename == "":
         return {"error": "Nenhum arquivo enviado"}, 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return {"error": "Nenhum arquivo selecionado"}, 400
-        
-    if file and (file.filename.endswith('.txt') or file.filename.endswith('.m3u')):
-        filepath = os.path.join(BASE_DIR, "data", "dados.txt")
-        file.save(filepath)
-        
-        # Trigger reindex
-        stats = indexer.reindex()
-        return {"status": "ok", "stats": stats}
-    
-    return {"error": "Formato inválido. Envie um arquivo .txt ou .m3u"}, 400
+    f = request.files["file"]
+    if not (f.filename.endswith(".txt") or f.filename.endswith(".m3u")):
+        return {"error": "Formato inválido"}, 400
+
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT id, filename FROM m3u_servers WHERE slug='principal' LIMIT 1")
+    server = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not server:
+        return {"error": "Server 'principal' não encontrado — cadastre um server primeiro"}, 404
+
+    filepath = os.path.join(BASE_DIR, server["filename"])
+    f.save(filepath)
+    _refresh_server_file_stats(server["id"], filepath)
+    stats = indexer.reindex(server_id=server["id"])
+    return {"status": "ok", "stats": stats}
 
 
 # =========================================================
