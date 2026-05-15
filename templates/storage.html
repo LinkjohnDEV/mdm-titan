@@ -14,7 +14,7 @@
         <!-- Pool picker -->
         <div class="flex items-center gap-2 bg-slate-800/40 border border-slate-700 rounded-xl px-3 py-1.5">
             <i data-lucide="hard-drive" class="w-4 h-4 text-blue-400"></i>
-            <select id="poolSelect" onchange="trocarPool()"
+            <select id="poolSelect" onchange="trocarPool()" style="color-scheme: dark"
                 class="bg-transparent text-white text-sm font-bold outline-none cursor-pointer">
                 <option value="">Carregando…</option>
             </select>
@@ -217,7 +217,7 @@
             pools.forEach(p => {
                 const o = document.createElement('option');
                 o.value = p.path;
-                o.textContent = `${p.label} — ${p.used_pct}% usado (${p.free_human} livres)`;
+                o.style.background = "#0b0f1a"; o.style.color = "#fff"; o.textContent = `${p.label} — ${p.used_pct}% usado (${p.free_human} livres)`;
                 sel.appendChild(o);
             });
             sel.value = currentPool;
