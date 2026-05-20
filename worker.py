@@ -82,6 +82,30 @@ def is_job_cancelled(job_id):
 # =================== DOWNLOAD DIRETO ====================
 # =========================================================
 
+def _get_remote_size(url, log=None):
+    """RESUME_FEATURE (2026-05-20): HEAD request pra descobrir tamanho remoto.
+
+    Retorna int (bytes) ou None se falhar. Best-effort — falha em silêncio.
+    Usado pra decidir se arquivo local está completo, parcial, ou precisa refazer.
+    """
+    try:
+        r = requests.head(
+            url,
+            headers=DOWNLOAD_HEADERS,
+            allow_redirects=True,
+            timeout=15
+        )
+        if r.status_code in (200, 206):
+            cl = r.headers.get("Content-Length")
+            if cl:
+                return int(cl)
+    except Exception as e:
+        if log:
+            log.write(f"[_get_remote_size] HEAD falhou: {e}\n")
+            log.flush()
+    return None
+
+
 def download_direct(url, filepath, log, job_id=None, resume_from=0):
     """
     Faz download direto via HTTP usando requests com streaming.
@@ -377,12 +401,14 @@ def start_job(job):
             filepath = os.path.join(caminho, filename)
 
             # ==========================================
-            # SE ARQUIVO JÁ EXISTE → PULA OU APAGA (SOBRESCREVER)
+            # SE ARQUIVO JÁ EXISTE → COMPLETO PULA, PARCIAL RESUME, SOBRESCREVER APAGA
             # ==========================================
+            # RESUME_FEATURE (2026-05-20): antes pulava se arquivo existisse, mesmo parcial.
+            # Agora usa HEAD pra ver tamanho remoto e decide: pular (completo), resume (parcial), refazer (sobrescrever/zerado).
             if os.path.exists(filepath):
-                if not job.get("sobrescrever", False):
-                    continue
-                else:
+                current_size = os.path.getsize(filepath)
+
+                if job.get("sobrescrever", False):
                     try:
                         os.remove(filepath)
                         log.write(f"[worker] Arquivo antigo removido para sobrescrever: {filename}\n")
@@ -390,6 +416,35 @@ def start_job(job):
                     except Exception as e:
                         log.write(f"[worker] Erro ao remover arquivo existente: {e}\n")
                         log.flush()
+                elif current_size == 0:
+                    try:
+                        os.remove(filepath)
+                    except Exception:
+                        pass
+                else:
+                    # Tenta descobrir tamanho remoto via HEAD pra comparar
+                    remote_size = _get_remote_size(url, log)
+
+                    if remote_size and current_size >= remote_size:
+                        log.write(f"[worker] Já completo ({current_size / (1024*1024):.1f} MB), pulando\n")
+                        log.flush()
+                        continue
+                    elif remote_size:
+                        log.write(f"[worker] Parcial detectado ({current_size / (1024*1024):.1f}/{remote_size / (1024*1024):.1f} MB) — tentando resume\n")
+                        log.flush()
+                        # Cai no retry loop abaixo, que vai usar resume_from = current_size
+                    else:
+                        # HEAD falhou: se >= 50MB, assume incompleto e tenta resume; senão, refaz
+                        if current_size >= 50 * 1024 * 1024:
+                            log.write(f"[worker] HEAD falhou; parcial existente ({current_size / (1024*1024):.1f} MB) — tentando resume\n")
+                            log.flush()
+                        else:
+                            log.write(f"[worker] HEAD falhou; arquivo pequeno ({current_size} bytes) — refazendo\n")
+                            log.flush()
+                            try:
+                                os.remove(filepath)
+                            except Exception:
+                                pass
 
             sucesso_download = False
 
@@ -402,12 +457,12 @@ def start_job(job):
                 log.write(f"\n[worker] Tentativa {tentativa + 1}/{MAX_RETRIES} — {filename}\n")
                 log.flush()
 
-                # RESUME_FEATURE (2026-05-20): se já tem parcial de tentativa anterior, tenta resumir
+                # RESUME_FEATURE (2026-05-20): se já tem parcial (de tentativa anterior OU pré-existente), tenta resumir
                 resume_from = 0
-                if tentativa > 0 and os.path.exists(filepath):
+                if os.path.exists(filepath):
                     resume_from = os.path.getsize(filepath)
-                    if resume_from > 0:
-                        log.write(f"[worker] Parcial detectado ({resume_from / (1024*1024):.1f} MB) — tentando resume\n")
+                    if resume_from > 0 and tentativa > 0:
+                        log.write(f"[worker] Continuando do parcial ({resume_from / (1024*1024):.1f} MB)\n")
                         log.flush()
 
                 result = download_direct(url, filepath, log, job_id=job["id"], resume_from=resume_from)
