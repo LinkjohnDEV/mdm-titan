@@ -3,8 +3,19 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>MDM Titan V2 | Control</title>
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="MDM">
+    <link rel="apple-touch-icon" href="/static/icon.svg">
+    <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap"
@@ -164,7 +175,13 @@
                         Automation</span>
                 </div>
 
-                <div class="flex items-center gap-4">
+                <div class="flex items-center gap-3">
+                    <!-- Botão instalar PWA (aparece quando disponível) -->
+                    <button id="pwa-install-btn" onclick="installPWA()"
+                        class="hidden items-center gap-2 bg-blue-600/20 hover:bg-blue-600/40 px-3 py-1.5 rounded-lg border border-blue-500/30 transition-all text-[11px] font-bold text-blue-400 uppercase">
+                        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                        <span class="hidden sm:inline">Instalar App</span>
+                    </button>
                     <div
                         class="flex items-center gap-2 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
                         <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
@@ -198,6 +215,33 @@
                 link.classList.remove('text-slate-400');
             }
         });
+
+        // ── PWA ──────────────────────────────────────────────────────────
+        let _pwaPrompt = null;
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                .catch(e => console.warn('SW register failed:', e));
+        }
+
+        window.addEventListener('beforeinstallprompt', e => {
+            e.preventDefault();
+            _pwaPrompt = e;
+            const btn = document.getElementById('pwa-install-btn');
+            if (btn) btn.classList.replace('hidden', 'flex');
+        });
+
+        window.addEventListener('appinstalled', () => {
+            _pwaPrompt = null;
+            const btn = document.getElementById('pwa-install-btn');
+            if (btn) btn.classList.replace('flex', 'hidden');
+        });
+
+        function installPWA() {
+            if (!_pwaPrompt) return;
+            _pwaPrompt.prompt();
+            _pwaPrompt.userChoice.then(() => { _pwaPrompt = null; });
+        }
     </script>
 </body>
 

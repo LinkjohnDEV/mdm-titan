@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, session, jsonify
+from flask import Flask, render_template, request, redirect, session, jsonify, send_from_directory
 import os
 import shutil
 import hashlib
@@ -143,6 +143,20 @@ def get_category_base(data, tipo):
     raw = (data or {}).get("storage")
     return category_base(resolve_storage(raw), tipo)
 
+def cross_pool_exists(nome_seguro, tipo, selected_storage):
+    """Retorna lista de outros pools onde o conteúdo já existe (excluindo o selecionado)."""
+    found = []
+    for root in list_storage_roots():
+        if root == selected_storage:
+            continue
+        path = os.path.join(category_base(root, tipo), nome_seguro)
+        try:
+            if os.path.isdir(path) and any(os.scandir(path)):
+                found.append(root)
+        except PermissionError:
+            pass
+    return found
+
 # Constantes legadas — apontam pro storage padrão; mantidas pra backwards-compat
 # nas funções que ainda não foram migradas pra receber storage por request.
 SERIES_BASE = category_base(DEFAULT_STORAGE, "serie")
@@ -160,6 +174,15 @@ indexer.init(BASE_DIR, _load_m3u_servers_for_indexer)
 # =========================================================
 # ======================== LOGIN ==========================
 # =========================================================
+
+
+@app.route("/sw.js")
+def service_worker():
+    return send_from_directory(os.path.join(app.root_path, "static"), "sw.js", mimetype="application/javascript")
+
+@app.route("/manifest.json")
+def pwa_manifest():
+    return send_from_directory(os.path.join(app.root_path, "static"), "manifest.json", mimetype="application/manifest+json")
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -386,12 +409,17 @@ def add_serie():
         return {"message": "Dados inválidos"}, 400
         
     force = data.get("force", False)
-    serie_path = os.path.join(get_category_base(data, "serie"), nome)
+    selected_storage = resolve_storage(data.get("storage"))
+    serie_path = os.path.join(category_base(selected_storage, "serie"), nome)
     season_path = os.path.join(serie_path, f"Season {temporada}")
-    
-    # Se a pasta da temporada já existir e "force" não for verdadeiro
+
     if os.path.exists(season_path) and any(os.scandir(season_path)) and not force:
         return {"error": "exists", "message": "Esta temporada já existe no servidor. Deseja sobrescrevê-la e baixar novamente?"}, 409
+
+    if not force:
+        outros = cross_pool_exists(os.path.join(nome, f"Season {temporada}"), "serie", selected_storage)
+        if outros:
+            return {"error": "exists", "message": f"Season {temporada} de {nome} já existe em {', '.join(outros)}. Deseja baixar mesmo assim em {selected_storage}?"}, 409
 
     os.makedirs(season_path, exist_ok=True)
 
@@ -430,8 +458,10 @@ def add_serie_completa():
         return {"message": "Dados inválidos"}, 400
 
     force = data.get("force", False)
+    selected_storage = resolve_storage(data.get("storage"))
     queued = 0
     exists_seasons = []
+    cross_seasons = []
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -442,12 +472,18 @@ def add_serie_completa():
         if not temporada or not episodios:
             continue
 
-        serie_path = os.path.join(get_category_base(data, "serie"), nome)
+        serie_path = os.path.join(category_base(selected_storage, "serie"), nome)
         season_path = os.path.join(serie_path, f"Season {temporada}")
 
         if os.path.exists(season_path) and any(os.scandir(season_path)) and not force:
             exists_seasons.append(temporada)
             continue
+
+        if not force:
+            outros = cross_pool_exists(os.path.join(nome, f"Season {temporada}"), "serie", selected_storage)
+            if outros:
+                cross_seasons.append((temporada, outros))
+                continue
 
         os.makedirs(season_path, exist_ok=True)
 
@@ -468,6 +504,10 @@ def add_serie_completa():
     conn.commit()
     cursor.close()
     conn.close()
+
+    if queued == 0 and cross_seasons:
+        partes = "; ".join(f"T{t} em {', '.join(p)}" for t, p in cross_seasons)
+        return {"error": "exists", "message": f"Temporada(s) já existem em outro storage: {partes}. Deseja baixar mesmo assim em {selected_storage}?"}, 409
 
     if queued == 0 and exists_seasons:
         return {
@@ -528,10 +568,16 @@ def add_filme():
     nome_seguro = re.sub(r'[\\/*?:"<>|]', "", nome).strip()
 
     force = data.get("force", False)
-    pasta = os.path.join(get_category_base(data, "filme"), nome_seguro)
-    
+    selected_storage = resolve_storage(data.get("storage"))
+    pasta = os.path.join(category_base(selected_storage, "filme"), nome_seguro)
+
     if os.path.exists(pasta) and any(os.scandir(pasta)) and not force:
         return {"error": "exists", "message": "Este filme já existe no servidor. Deseja sobrescrevê-lo e baixar novamente?"}, 409
+
+    if not force:
+        outros = cross_pool_exists(nome_seguro, "filme", selected_storage)
+        if outros:
+            return {"error": "exists", "message": f"Este filme já existe em {', '.join(outros)}. Deseja baixar mesmo assim em {selected_storage}?"}, 409
 
     os.makedirs(pasta, exist_ok=True)
 
@@ -1367,6 +1413,12 @@ def run_script():
                     exists_list.append(temporada)
                     continue
 
+                if not force:
+                    outros = cross_pool_exists(os.path.join(nome, f"Season {temporada}"), "serie", storage_root)
+                    if outros:
+                        exists_list.append(f"{temporada}(em {', '.join(outros)})")
+                        continue
+
                 os.makedirs(season_path, exist_ok=True)
                 links_file = os.path.join(season_path, "links.txt")
                 with open(links_file, "w", encoding="utf-8") as f:
@@ -1403,6 +1455,12 @@ def run_script():
                     exists_list.append(f_nome)
                     continue
 
+                if not force:
+                    outros = cross_pool_exists(f_nome, "filme", storage_root)
+                    if outros:
+                        exists_list.append(f"{f_nome}(em {', '.join(outros)})")
+                        continue
+
                 os.makedirs(dest_path, exist_ok=True)
                 links_file = os.path.join(dest_path, "links.txt")
                 with open(links_file, "w", encoding="utf-8") as lf:
@@ -1426,6 +1484,12 @@ def run_script():
             dest_path = os.path.join(base_path, nome)
             if os.path.exists(dest_path) and any(os.scandir(dest_path)) and not force:
                 return jsonify({"message": f"'{nome}' já existe. Deseja sobrescrever?"}), 409
+
+            if not force:
+                tipo_base = tipo if tipo in ("filme", "desenho", "anime") else "filme"
+                outros = cross_pool_exists(nome, tipo_base, storage_root)
+                if outros:
+                    return jsonify({"message": f"'{nome}' já existe em {', '.join(outros)}. Deseja baixar mesmo assim em {storage_root}?"}), 409
 
             os.makedirs(dest_path, exist_ok=True)
             links_file = os.path.join(dest_path, "links.txt")
@@ -2161,40 +2225,47 @@ def cleanup_page():
 
 def _bg_cleanup_task():
     global CLEANUP_STATE
-    base_path = "/mnt/media"
+    pools = list_storage_roots()
     deleted_count = 0
     freed_space_bytes = 0
     deleted_dirs_count = 0
-    
+
     target_names = ["download.log", "links.txt"]
     target_ext = ".part"
-    
+
     try:
-        if not os.path.exists(base_path):
-            CLEANUP_STATE["error"] = f"O diretório {base_path} não existe"
+        if not pools:
+            CLEANUP_STATE["error"] = "Nenhum storage pool encontrado"
             CLEANUP_STATE["running"] = False
             return
 
-        for root, dirs, files in os.walk(base_path, topdown=False):
-            for file in files:
-                CLEANUP_STATE["current_file"] = file
-                if file in target_names or file.endswith(target_ext):
-                    filepath = os.path.join(root, file)
+        for base_path in pools:
+            if not os.path.exists(base_path):
+                continue
+
+            pool_label = os.path.basename(base_path)
+            CLEANUP_STATE["current_file"] = f"[{pool_label}] iniciando..."
+
+            for root, dirs, files in os.walk(base_path, topdown=False):
+                for file in files:
+                    CLEANUP_STATE["current_file"] = f"[{pool_label}] {file}"
+                    if file in target_names or file.endswith(target_ext):
+                        filepath = os.path.join(root, file)
+                        try:
+                            size = os.path.getsize(filepath)
+                            os.remove(filepath)
+                            deleted_count += 1
+                            freed_space_bytes += size
+                        except Exception as e:
+                            print(f"[Cleanup] Erro ao deletar {filepath}: {e}")
+
+                if root != base_path:
                     try:
-                        size = os.path.getsize(filepath)
-                        os.remove(filepath)
-                        deleted_count += 1
-                        freed_space_bytes += size
+                        if not os.listdir(root):
+                            os.rmdir(root)
+                            deleted_dirs_count += 1
                     except Exception as e:
-                        print(f"[Cleanup] Erro ao deletar {filepath}: {e}")
-            
-            if root != base_path:
-                try:
-                    if not os.listdir(root):
-                        os.rmdir(root)
-                        deleted_dirs_count += 1
-                except Exception as e:
-                    print(f"[Cleanup] Erro ao deletar pasta vazia {root}: {e}")
+                        print(f"[Cleanup] Erro ao deletar pasta vazia {root}: {e}")
 
         freed_space_mb = round(freed_space_bytes / (1024 * 1024), 2)
         CLEANUP_STATE["deleted_count"] = deleted_count
