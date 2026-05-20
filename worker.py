@@ -38,6 +38,21 @@ _ativos_total = 0
 _active_per_hostname = {}  # {hostname: count}
 
 
+def _bump_episodios_baixados(job_id):
+    """COUNTER_FIX (2026-05-20): incrementa episodios_baixados em 1.
+    Idempotente o suficiente — usado após cada episódio confirmado no disco.
+    """
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("UPDATE jobs SET episodios_baixados = episodios_baixados + 1 WHERE id = %s", (job_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"[worker] Erro ao incrementar contador: {e}")
+
+
 def _extract_first_hostname(job):
     """HOSTNAME_THROTTLE: lê primeira URL do links.txt e retorna hostname.
     Retorna None se falhar — nesse caso o job roda sem throttle.
@@ -511,6 +526,7 @@ def start_job(job):
                     if remote_size and current_size == remote_size:
                         log.write(f"[worker] Já completo ({current_size / (1024*1024):.1f} MB), pulando\n")
                         log.flush()
+                        _bump_episodios_baixados(job["id"])  # COUNTER_FIX
                         continue
                     elif remote_size and current_size > remote_size:
                         # RESUME_FEATURE_FIX (2026-05-20): arquivo local maior que remoto - truncar
@@ -522,6 +538,7 @@ def start_job(job):
                         except Exception as e:
                             log.write(f"[worker] Erro ao truncar: {e}\n")
                             log.flush()
+                        _bump_episodios_baixados(job["id"])  # COUNTER_FIX
                         continue
                     elif remote_size:
                         log.write(f"[worker] Parcial detectado ({current_size / (1024*1024):.1f}/{remote_size / (1024*1024):.1f} MB) — tentando resume\n")
@@ -566,6 +583,7 @@ def start_job(job):
 
                 if result is True:
                     sucesso_download = True
+                    _bump_episodios_baixados(job["id"])  # COUNTER_FIX (2026-05-20)
                     break
 
                 # ── 2) Fallback: tenta via yt-dlp se disponível ──
@@ -620,6 +638,7 @@ def start_job(job):
 
                     if process.returncode == 0 and os.path.exists(filepath):
                         sucesso_download = True
+                        _bump_episodios_baixados(job["id"])  # COUNTER_FIX (2026-05-20)
                         break
 
                 time.sleep(2)
@@ -687,9 +706,11 @@ def process_job(job):
 
         # 🟢 SUCESSO
         if resultado is True:
+            # COUNTER_FIX (2026-05-20): snap episodios_baixados ao total no fim
             cursor.execute("""
                 UPDATE jobs
-                SET status='completed', finished_at=NOW(), pid=NULL
+                SET status='completed', finished_at=NOW(), pid=NULL,
+                    episodios_baixados=total_episodios
                 WHERE id=%s
             """, (job_id,))
             conn.commit()
