@@ -155,6 +155,41 @@ def download_direct(url, filepath, log, job_id=None, resume_from=0):
             log.flush()
             mode = "wb"
             initial_downloaded = 0
+        # RESUME_FEATURE_FIX (2026-05-20): 416 = pedimos byte além do fim do arquivo
+        # Significa que o arquivo já contém todos os bytes (provavelmente completo)
+        elif resume_from > 0 and response.status_code == 416:
+            content_range = response.headers.get("Content-Range", "")
+            remote_total = None
+            if content_range.startswith("bytes */"):
+                try:
+                    remote_total = int(content_range.split("/")[-1])
+                except ValueError:
+                    pass
+
+            current_local = os.path.getsize(filepath) if os.path.exists(filepath) else 0
+
+            if remote_total is not None:
+                if current_local == remote_total:
+                    log.write(f"[download_direct] ✅ Arquivo já completo conforme servidor ({remote_total / (1024*1024):.1f} MB)\n")
+                    log.flush()
+                    return True
+                elif current_local > remote_total:
+                    # Arquivo local maior que o remoto - truncar pro tamanho correto
+                    log.write(f"[download_direct] ⚠️ Local {current_local / (1024*1024):.1f} MB > remoto {remote_total / (1024*1024):.1f} MB — truncando\n")
+                    log.flush()
+                    with open(filepath, "rb+") as ftrunc:
+                        ftrunc.truncate(remote_total)
+                    return True
+                else:
+                    # Inconsistente: local < remote mas 416 — algo estranho
+                    log.write(f"[download_direct] ❌ Inconsistente: local {current_local} < remote {remote_total} mas 416\n")
+                    log.flush()
+                    return False
+            else:
+                # Sem Content-Range: assume completo (best effort)
+                log.write(f"[download_direct] ✅ 416 sem Content-Range — assumindo completo\n")
+                log.flush()
+                return True
         elif response.status_code not in (200, 206):
             log.write(f"[download_direct] HTTP {response.status_code} para {url}\n")
             log.flush()
@@ -175,6 +210,9 @@ def download_direct(url, filepath, log, job_id=None, resume_from=0):
         downloaded = initial_downloaded
         last_log_percent = int((downloaded / total_size) * 100) - 1 if total_size else -1
         bytes_since_cancel_check = 0
+        # RESUME_FEATURE_FIX (2026-05-20): limitar bytes escritos ao total esperado pra
+        # evitar arquivos maiores que o remoto quando o servidor manda bytes extras.
+        remaining_to_write = (total_size - downloaded) if total_size else None
 
         log.write(f"[download_direct] Iniciando download: {url}\n")
         if total_size:
@@ -184,9 +222,20 @@ def download_direct(url, filepath, log, job_id=None, resume_from=0):
         with open(filepath, mode) as f:
             for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                 if chunk:
+                    # RESUME_FEATURE_FIX: trunca chunk se vai passar do esperado
+                    if remaining_to_write is not None:
+                        if remaining_to_write <= 0:
+                            log.write(f"[download_direct] ⚠️ Servidor mandou bytes extras — interrompendo escrita\n")
+                            log.flush()
+                            break
+                        if len(chunk) > remaining_to_write:
+                            chunk = chunk[:remaining_to_write]
+
                     f.write(chunk)
                     downloaded += len(chunk)
                     bytes_since_cancel_check += len(chunk)
+                    if remaining_to_write is not None:
+                        remaining_to_write -= len(chunk)
 
                     # ── Verifica cancelamento a cada 1MB ──
                     if job_id and bytes_since_cancel_check >= CANCEL_CHECK_BYTES:
@@ -212,6 +261,11 @@ def download_direct(url, filepath, log, job_id=None, resume_from=0):
         MIN_SIZE = 1 * 1024 * 1024  # 1 MB
         if os.path.exists(filepath) and os.path.getsize(filepath) >= MIN_SIZE:
             size_mb = os.path.getsize(filepath) / (1024 * 1024)
+            # RESUME_FEATURE_FIX (2026-05-20): só considera completo se atingiu o total_size esperado
+            if total_size is not None and os.path.getsize(filepath) < total_size:
+                log.write(f"[download_direct] ⚠️ Incompleto: {size_mb:.1f} MB de {total_size / (1024*1024):.1f} MB esperado\n")
+                log.flush()
+                return False
             log.write(f"[download_direct] ✅ Concluído: {size_mb:.1f} MB\n")
             log.flush()
             return True
@@ -425,9 +479,20 @@ def start_job(job):
                     # Tenta descobrir tamanho remoto via HEAD pra comparar
                     remote_size = _get_remote_size(url, log)
 
-                    if remote_size and current_size >= remote_size:
+                    if remote_size and current_size == remote_size:
                         log.write(f"[worker] Já completo ({current_size / (1024*1024):.1f} MB), pulando\n")
                         log.flush()
+                        continue
+                    elif remote_size and current_size > remote_size:
+                        # RESUME_FEATURE_FIX (2026-05-20): arquivo local maior que remoto - truncar
+                        log.write(f"[worker] Local {current_size / (1024*1024):.1f} MB > remoto {remote_size / (1024*1024):.1f} MB — truncando\n")
+                        log.flush()
+                        try:
+                            with open(filepath, "rb+") as ftrunc:
+                                ftrunc.truncate(remote_size)
+                        except Exception as e:
+                            log.write(f"[worker] Erro ao truncar: {e}\n")
+                            log.flush()
                         continue
                     elif remote_size:
                         log.write(f"[worker] Parcial detectado ({current_size / (1024*1024):.1f}/{remote_size / (1024*1024):.1f} MB) — tentando resume\n")
