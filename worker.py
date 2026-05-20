@@ -15,7 +15,7 @@ from db import get_connection
 CHECK_INTERVAL = 3          # Tempo entre verificações da fila (segundos)
 START_DELAY = 3             # Delay inicial antes de processar
 YTDLP_PATH = "/usr/bin/yt-dlp"
-MAX_RETRIES = 3             # Tentativas por episódio
+MAX_RETRIES = 6             # Tentativas por episódio (RESUME_FEATURE 2026-05-20: era 3; com resume cada retry avança)
 CHUNK_SIZE = 8192           # Tamanho dos chunks para download streaming
 CANCEL_CHECK_BYTES = 1024 * 1024  # Verifica cancel a cada 1MB
 
@@ -82,26 +82,56 @@ def is_job_cancelled(job_id):
 # =================== DOWNLOAD DIRETO ====================
 # =========================================================
 
-def download_direct(url, filepath, log, job_id=None):
+def download_direct(url, filepath, log, job_id=None, resume_from=0):
     """
     Faz download direto via HTTP usando requests com streaming.
     Segue redirecionamentos automaticamente.
     Verifica cancelamento a cada 1MB baixado.
+
+    RESUME_FEATURE (2026-05-20):
+      - Se resume_from > 0, envia Range: bytes={resume_from}- e abre em append
+      - 206 Partial Content → continua de onde parou
+      - 200 OK quando pedimos Range → servidor ignorou; sobrescreve do zero
+      - Em erros de rede (IncompleteRead/Timeout), NÃO deleta o arquivo parcial
+        (o retry no worker tenta resumir a partir do tamanho atual)
+      - Só deleta o parcial se ficou MUITO pequeno (< 1MB) ou se sucesso final
+
     Retorna:
         True        → sucesso
-        False       → falhou
+        False       → falhou (parcial preservado em filepath se houve progresso)
         "cancelled" → cancelado pelo usuário
     """
+    headers = dict(DOWNLOAD_HEADERS)
+    mode = "wb"
+    initial_downloaded = 0
+
+    # RESUME_FEATURE: pede Range se temos byte inicial
+    if resume_from > 0:
+        headers["Range"] = f"bytes={resume_from}-"
+        log.write(f"[download_direct] Tentando resume a partir de {resume_from / (1024*1024):.1f} MB\n")
+        log.flush()
+
     try:
         response = requests.get(
             url,
-            headers=DOWNLOAD_HEADERS,
+            headers=headers,
             stream=True,
             allow_redirects=True,
             timeout=(15, 300)
         )
 
-        if response.status_code not in (200, 206):
+        # RESUME_FEATURE: interpreta resposta conforme Range
+        if resume_from > 0 and response.status_code == 206:
+            mode = "ab"
+            initial_downloaded = resume_from
+            log.write(f"[download_direct] ✅ Resume aceito (206 Partial Content)\n")
+            log.flush()
+        elif resume_from > 0 and response.status_code == 200:
+            log.write(f"[download_direct] Servidor ignorou Range, sobrescrevendo do zero\n")
+            log.flush()
+            mode = "wb"
+            initial_downloaded = 0
+        elif response.status_code not in (200, 206):
             log.write(f"[download_direct] HTTP {response.status_code} para {url}\n")
             log.flush()
             return False
@@ -111,13 +141,15 @@ def download_direct(url, filepath, log, job_id=None):
 
         valid_types = ("video/", "application/octet-stream", "application/mp4", "text/plain", "binary/octet-stream")
         if content_type and not any(t in content_type for t in valid_types):
-            # Relaxa a verificação gravando apenas o Warning em log, prosseguindo com download. 
+            # Relaxa a verificação gravando apenas o Warning em log, prosseguindo com download.
             log.write(f"[download_direct] Warning: Content-Type incomum: {content_type}, mas tentando baixar...\n")
             log.flush()
 
-        total_size = int(content_length) if content_length else None
-        downloaded = 0
-        last_log_percent = -1
+        # RESUME_FEATURE: Content-Length em 206 é o que FALTA, não o total
+        remaining = int(content_length) if content_length else None
+        total_size = (initial_downloaded + remaining) if remaining else None
+        downloaded = initial_downloaded
+        last_log_percent = int((downloaded / total_size) * 100) - 1 if total_size else -1
         bytes_since_cancel_check = 0
 
         log.write(f"[download_direct] Iniciando download: {url}\n")
@@ -125,7 +157,7 @@ def download_direct(url, filepath, log, job_id=None):
             log.write(f"[download_direct] Tamanho total: {total_size / (1024*1024):.1f} MB\n")
         log.flush()
 
-        with open(filepath, "wb") as f:
+        with open(filepath, mode) as f:
             for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                 if chunk:
                     f.write(chunk)
@@ -168,16 +200,16 @@ def download_direct(url, filepath, log, job_id=None):
             return False
 
     except requests.exceptions.Timeout:
-        log.write(f"[download_direct] ❌ Timeout ao conectar/baixar\n")
+        # RESUME_FEATURE: NÃO deleta o arquivo parcial — retry tenta resume
+        partial = os.path.getsize(filepath) if os.path.exists(filepath) else 0
+        log.write(f"[download_direct] ❌ Timeout ao conectar/baixar (parcial preservado: {partial / (1024*1024):.1f} MB)\n")
         log.flush()
-        if os.path.exists(filepath):
-            os.remove(filepath)
         return False
     except Exception as e:
-        log.write(f"[download_direct] ❌ Erro: {str(e)}\n")
+        # RESUME_FEATURE: NÃO deleta o arquivo parcial — retry tenta resume
+        partial = os.path.getsize(filepath) if os.path.exists(filepath) else 0
+        log.write(f"[download_direct] ❌ Erro: {str(e)} (parcial preservado: {partial / (1024*1024):.1f} MB)\n")
         log.flush()
-        if os.path.exists(filepath):
-            os.remove(filepath)
         return False
 
 
@@ -370,7 +402,15 @@ def start_job(job):
                 log.write(f"\n[worker] Tentativa {tentativa + 1}/{MAX_RETRIES} — {filename}\n")
                 log.flush()
 
-                result = download_direct(url, filepath, log, job_id=job["id"])
+                # RESUME_FEATURE (2026-05-20): se já tem parcial de tentativa anterior, tenta resumir
+                resume_from = 0
+                if tentativa > 0 and os.path.exists(filepath):
+                    resume_from = os.path.getsize(filepath)
+                    if resume_from > 0:
+                        log.write(f"[worker] Parcial detectado ({resume_from / (1024*1024):.1f} MB) — tentando resume\n")
+                        log.flush()
+
+                result = download_direct(url, filepath, log, job_id=job["id"], resume_from=resume_from)
 
                 if result == "cancelled":
                     return "cancelled"
@@ -435,7 +475,17 @@ def start_job(job):
 
                 time.sleep(2)
 
+            # RESUME_FEATURE (2026-05-20): se TODAS as tentativas falharam, remove o parcial residual
             if not sucesso_download:
+                if os.path.exists(filepath):
+                    try:
+                        partial_size = os.path.getsize(filepath)
+                        os.remove(filepath)
+                        log.write(f"[worker] Parcial removido após {MAX_RETRIES} tentativas falhadas ({partial_size / (1024*1024):.1f} MB)\n")
+                        log.flush()
+                    except Exception as e:
+                        log.write(f"[worker] Erro ao limpar parcial: {e}\n")
+                        log.flush()
                 return False
 
     return True
