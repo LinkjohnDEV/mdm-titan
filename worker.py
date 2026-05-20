@@ -434,7 +434,12 @@ def send_webhook(message):
 
 def get_next_jobs(cursor, slots_disponiveis):
     """
-    Retorna os próximos jobs da fila (FIFO) respeitando o limite global.
+    Retorna os próximos jobs da fila (FIFO).
+
+    HOSTNAME_THROTTLE_FIX (2026-05-20): retorna mais jobs do que slots disponíveis.
+    O loop principal pula jobs cujo hostname já está no limite. Se buscássemos só
+    `slots` jobs e todos fossem do mesmo hostname bloqueado, nunca encontraríamos
+    jobs de hostnames livres que vieram depois na fila.
     """
     if slots_disponiveis <= 0:
         return []
@@ -442,8 +447,8 @@ def get_next_jobs(cursor, slots_disponiveis):
         SELECT * FROM jobs
         WHERE status='queued'
         ORDER BY id ASC
-        LIMIT %s
-    """, (slots_disponiveis,))
+        LIMIT 100
+    """)
     return cursor.fetchall()
 
 
