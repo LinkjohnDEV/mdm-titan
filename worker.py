@@ -16,6 +16,7 @@ CHECK_INTERVAL = 3          # Tempo entre verificações da fila (segundos)
 START_DELAY = 3             # Delay inicial antes de processar
 YTDLP_PATH = "/usr/bin/yt-dlp"
 MAX_RETRIES = 6             # Tentativas por episódio (RESUME_FEATURE 2026-05-20: era 3; com resume cada retry avança)
+MAX_PER_HOSTNAME = 1        # HOSTNAME_THROTTLE 2026-05-20: max downloads ativos por hostname (anti rate-limit da fonte)
 CHUNK_SIZE = 8192           # Tamanho dos chunks para download streaming
 CANCEL_CHECK_BYTES = 1024 * 1024  # Verifica cancel a cada 1MB
 
@@ -32,6 +33,34 @@ DOWNLOAD_HEADERS = {
 # Contador global thread-safe
 _lock = threading.Lock()
 _ativos_total = 0
+
+# HOSTNAME_THROTTLE (2026-05-20): contador de downloads ativos por hostname
+_active_per_hostname = {}  # {hostname: count}
+
+
+def _extract_first_hostname(job):
+    """HOSTNAME_THROTTLE: lê primeira URL do links.txt e retorna hostname.
+    Retorna None se falhar — nesse caso o job roda sem throttle.
+    """
+    from urllib.parse import urlparse
+    try:
+        caminho = job.get("caminho") or ""
+        # filmes guardam links.txt direto na pasta; séries na pasta da temporada
+        candidates = [
+            os.path.join(caminho, "links.txt"),
+        ]
+        for path in candidates:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    first = f.readline().strip()
+                if not first:
+                    return None
+                # Pode ser "nome|url" (série) ou só "url" (filme)
+                url = first.split("|", 1)[1] if "|" in first else first
+                return urlparse(url.strip()).hostname
+    except Exception:
+        pass
+    return None
 
 
 _CATEGORIA_BY_FOLDER = {
@@ -713,6 +742,12 @@ def process_job(job):
     # ── Libera slot ──
     with _lock:
         _ativos_total -= 1
+        # HOSTNAME_THROTTLE (2026-05-20): libera vaga do hostname
+        hostname = job.get("_hostname")
+        if hostname and hostname in _active_per_hostname:
+            _active_per_hostname[hostname] = max(0, _active_per_hostname[hostname] - 1)
+            if _active_per_hostname[hostname] == 0:
+                del _active_per_hostname[hostname]
 
 
 # =========================================================
@@ -778,10 +813,19 @@ def main():
 
             if jobs:
                 for job in jobs:
+                    # HOSTNAME_THROTTLE (2026-05-20): respeita limite por hostname.
+                    # Se o hostname já está no limite, pula este job — ele fica em queued
+                    # e tentamos de novo no próximo loop tick.
+                    hostname = _extract_first_hostname(job)
                     with _lock:
                         if _ativos_total >= MAX_SIMULTANEOS:
                             break
+                        if hostname and _active_per_hostname.get(hostname, 0) >= MAX_PER_HOSTNAME:
+                            continue
+                        if hostname:
+                            _active_per_hostname[hostname] = _active_per_hostname.get(hostname, 0) + 1
                         _ativos_total += 1
+                        job["_hostname"] = hostname  # pra liberar depois
                     executor.submit(process_job, job)
 
             cursor.close()
