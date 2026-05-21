@@ -157,6 +157,57 @@ def cross_pool_exists(nome_seguro, tipo, selected_storage):
             pass
     return found
 
+
+# FUZZY_DEDUP (2026-05-20): detecta "A Fera do Mar (2022)" vs "A Fera do Mar"
+# como mesma coisa. Verificação só dispara se nome normalizado bate mas
+# o nome exato não bate (senão duplicaria os avisos já existentes).
+_QUALITY_TAGS_RX = re.compile(
+    r'\b(1080p|720p|480p|2160p|4k|hdr|web-?dl|web-?rip|bluray|bdrip|hdtv|hdrip|x264|x265|hevc|avc|aac|dts|ddp5\.?1)\b',
+    re.IGNORECASE,
+)
+_YEAR_RX = re.compile(r'\b(19|20)\d{2}\b')
+
+def _normalize_title(name):
+    """Normaliza pra comparar títulos sem se importar com ano/qualidade/pontuação."""
+    if not name:
+        return ''
+    name = re.sub(r'\([^)]*\)', '', name)       # remove (2022), (BR), etc
+    name = re.sub(r'\[[^\]]*\]', '', name)      # remove [tags]
+    name = _YEAR_RX.sub('', name)               # remove anos soltos
+    name = _QUALITY_TAGS_RX.sub('', name)       # remove tags de qualidade
+    name = re.sub(r'[._\-]+', ' ', name)        # . _ - viram espaço
+    name = re.sub(r'\s+', ' ', name).strip()    # colapsa whitespace
+    return name.lower()
+
+
+def find_similar_existing(nome_seguro, tipo):
+    """FUZZY_DEDUP: lista (pool, folder_name) de pastas com título normalizado
+    igual ao nome_seguro, em qualquer pool. Ignora match exato (que já é tratado
+    por cross_pool_exists e os checks de pasta).
+    """
+    target = _normalize_title(nome_seguro)
+    if not target:
+        return []
+    matches = []
+    for pool in list_storage_roots():
+        category_path = category_base(pool, tipo)
+        if not os.path.isdir(category_path):
+            continue
+        try:
+            for entry in os.scandir(category_path):
+                if not entry.is_dir() or entry.name == nome_seguro:
+                    continue
+                if _normalize_title(entry.name) == target:
+                    # Confere se tem conteúdo (não conta pasta vazia)
+                    try:
+                        if any(os.scandir(entry.path)):
+                            matches.append((pool, entry.name))
+                    except (PermissionError, FileNotFoundError):
+                        pass
+        except (PermissionError, FileNotFoundError):
+            pass
+    return matches
+
 # Constantes legadas — apontam pro storage padrão; mantidas pra backwards-compat
 # nas funções que ainda não foram migradas pra receber storage por request.
 SERIES_BASE = category_base(DEFAULT_STORAGE, "serie")
@@ -421,6 +472,13 @@ def add_serie():
         if outros:
             return {"error": "exists", "message": f"Season {temporada} de {nome} já existe em {', '.join(outros)}. Deseja baixar mesmo assim em {selected_storage}?"}, 409
 
+    # FUZZY_DEDUP (2026-05-20): série com nome parecido em qualquer pool
+    if not force:
+        similar = find_similar_existing(nome, "serie")
+        if similar:
+            items = [f"'{n}' em {p}" for p, n in similar]
+            return {"error": "exists", "message": f"Achei série com nome parecido: {', '.join(items)}. Provavelmente é a mesma. Baixar como '{nome}' mesmo assim?"}, 409
+
     os.makedirs(season_path, exist_ok=True)
 
     links_file = os.path.join(season_path, "links.txt")
@@ -462,6 +520,13 @@ def add_serie_completa():
     queued = 0
     exists_seasons = []
     cross_seasons = []
+
+    # FUZZY_DEDUP (2026-05-20): checa nome parecido ANTES de iterar — vale pro pacote inteiro
+    if not force:
+        similar = find_similar_existing(nome, "serie")
+        if similar:
+            items = [f"'{n}' em {p}" for p, n in similar]
+            return {"error": "exists", "message": f"Achei série com nome parecido: {', '.join(items)}. Provavelmente é a mesma. Baixar como '{nome}' mesmo assim?"}, 409
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -578,6 +643,13 @@ def add_filme():
         outros = cross_pool_exists(nome_seguro, "filme", selected_storage)
         if outros:
             return {"error": "exists", "message": f"Este filme já existe em {', '.join(outros)}. Deseja baixar mesmo assim em {selected_storage}?"}, 409
+
+    # FUZZY_DEDUP (2026-05-20): detecta "A Fera do Mar (2022)" vs "A Fera do Mar"
+    if not force:
+        similar = find_similar_existing(nome_seguro, "filme")
+        if similar:
+            items = [f"'{n}' em {p}" for p, n in similar]
+            return {"error": "exists", "message": f"Achei título parecido: {', '.join(items)}. Provavelmente é o mesmo filme. Baixar mesmo assim?"}, 409
 
     os.makedirs(pasta, exist_ok=True)
 
