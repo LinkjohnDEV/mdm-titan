@@ -593,6 +593,17 @@ def start_job(job):
 
                 # ── 2) Fallback: tenta via yt-dlp se disponível ──
                 if os.path.exists(YTDLP_PATH):
+                    # YTDLP_FIX (2026-05-21): deletar parcial do download_direct antes
+                    # do yt-dlp rodar. Com --no-overwrites, yt-dlp via o arquivo existente
+                    # (truncado) e marcava como "já baixado", aceitando parcial como completo.
+                    if os.path.exists(filepath):
+                        try:
+                            size = os.path.getsize(filepath)
+                            os.remove(filepath)
+                            log.write(f"[worker] Parcial removido antes do yt-dlp ({size / (1024*1024):.1f} MB)\n")
+                        except Exception as e:
+                            log.write(f"[worker] Falha ao remover parcial pré-ytdlp: {e}\n")
+
                     log.write(f"[worker] Tentando fallback via yt-dlp...\n")
                     log.flush()
 
@@ -601,8 +612,7 @@ def start_job(job):
                         url,
                         "--no-playlist",
                         "--user-agent", DOWNLOAD_HEADERS["User-Agent"],
-                        "--continue",
-                        "--no-overwrites",
+                        "--force-overwrites",   # YTDLP_FIX: força refazer, sem pular existente
                         "-o", filename
                     ]
 
