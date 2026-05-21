@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
+<div id="mdm-toast"
+     class="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl border text-sm font-semibold pointer-events-none"
+     style="opacity:0; transform:translateY(10px); transition:opacity .25s ease, transform .25s ease"></div>
 
 <div class="mb-8">
     <h1 class="text-3xl font-bold text-white flex items-center gap-3">
@@ -205,8 +208,27 @@
         if (confirm("Deseja esvaziar a fila de temporadas?")) { sc_fila = []; sc_renderFila(); }
     }
 
+    function showToast(message, kind = "success") {
+        const t = document.getElementById("mdm-toast");
+        if (!t) return;
+        const colors = {
+            success: "bg-emerald-500/15 border-emerald-500/40 text-emerald-300",
+            error:   "bg-red-500/15 border-red-500/40 text-red-300",
+        };
+        t.className = `fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl border shadow-2xl text-sm font-semibold transition-all ${colors[kind]}`;
+        t.textContent = message;
+        t.style.opacity = "1";
+        t.style.transform = "translateY(0)";
+        clearTimeout(t._timer);
+        t._timer = setTimeout(() => {
+            t.style.opacity = "0";
+            t.style.transform = "translateY(10px)";
+        }, 4000);
+    }
+
     function sc_iniciarDownload(force = false) {
-        const nome = document.getElementById("sc_serieNome").value.trim();
+        const nomeField = document.getElementById("sc_serieNome");
+        const nome = nomeField.value.trim();
         if (!nome) { alert("Preencha o nome da série."); return; }
         if (!sc_fila.length) { alert("Adicione pelo menos uma temporada à fila."); return; }
         const storage = getSelectedStorage();
@@ -219,7 +241,18 @@
             if (res.status === 409) { if (confirm(data.message)) sc_iniciarDownload(true); return null; }
             if (!res.ok) { alert(data.message || data.error || "Erro ao adicionar."); return null; }
             return data;
-        }).then(data => { if (data) window.location.href = "/downloads"; });
+        }).then(data => {
+            if (!data) return;
+            // Sucesso: limpa fila + nome, mantém na tela pronto pra próxima série
+            const totalQueued = sc_fila.length;
+            sc_fila = [];
+            sc_renderFila();
+            nomeField.value = "";
+            const tempField = document.getElementById("sc_temporada");
+            if (tempField) tempField.value = "";
+            showToast(`✅ "${nome}" (${totalQueued} temporada${totalQueued > 1 ? 's' : ''}) adicionada à fila`);
+            nomeField.focus();
+        });
     }
 
     lucide.createIcons();

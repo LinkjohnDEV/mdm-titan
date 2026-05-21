@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
+<div id="mdm-toast"
+     class="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl border text-sm font-semibold pointer-events-none"
+     style="opacity:0; transform:translateY(10px); transition:opacity .25s ease, transform .25s ease"></div>
 
 <div class="mb-8">
     <h1 class="text-3xl font-bold text-white flex items-center gap-3">
@@ -97,9 +100,29 @@
         document.getElementById("search_movie").value = "";
     }
 
+    function showToast(message, kind = "success") {
+        const t = document.getElementById("mdm-toast");
+        if (!t) return;
+        const colors = {
+            success: "bg-emerald-500/15 border-emerald-500/40 text-emerald-300",
+            error:   "bg-red-500/15 border-red-500/40 text-red-300",
+        };
+        t.className = `fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl border shadow-2xl text-sm font-semibold transition-all ${colors[kind]}`;
+        t.textContent = message;
+        t.style.opacity = "1";
+        t.style.transform = "translateY(0)";
+        clearTimeout(t._timer);
+        t._timer = setTimeout(() => {
+            t.style.opacity = "0";
+            t.style.transform = "translateY(10px)";
+        }, 4000);
+    }
+
     function startMovie(force = false) {
-        const name = document.getElementById("movie_name").value;
-        const link = document.getElementById("movie_link").value;
+        const nameField = document.getElementById("movie_name");
+        const linkField = document.getElementById("movie_link");
+        const name = nameField.value;
+        const link = linkField.value;
         if (!name || !link) { alert("Selecione um filme ou preencha o nome e link."); return; }
         const storage = getSelectedStorage();
         if (!storage) { alert("Escolha um storage de destino."); return; }
@@ -112,7 +135,18 @@
             if (res.status === 409) { if (confirm(data.message)) startMovie(true); return null; }
             if (!res.ok) { alert(data.message || data.error || "Erro ao adicionar."); return null; }
             return data;
-        }).then(data => { if (data) window.location.href = "/downloads"; });
+        }).then(data => {
+            if (!data) return;
+            // Sucesso: limpa formulário e mantém na mesma tela pronto pro próximo
+            nameField.value = "";
+            linkField.value = "";
+            const search = document.getElementById("search_movie");
+            if (search) search.value = "";
+            const box = document.getElementById("results");
+            if (box) box.classList.add("hidden");
+            showToast(`✅ "${name}" adicionado à fila`);
+            nameField.focus();
+        });
     }
 
     lucide.createIcons();
