@@ -173,11 +173,16 @@ def download_direct(url, filepath, log, job_id=None, resume_from=0):
     mode = "wb"
     initial_downloaded = 0
 
-    # RESUME_FEATURE: pede Range se temos byte inicial
+    # RANGE_ALWAYS_FIX (2026-05-22): sempre manda Range, mesmo do zero.
+    # Fontes IPTV (brpr.shop após defesa anti-scraping) rejeitam GET sem
+    # Range com 416. "Range: bytes=0-" é equivalente a GET normal pra
+    # servidores que não usam Range, então é seguro pra qualquer fonte.
     if resume_from > 0:
         headers["Range"] = f"bytes={resume_from}-"
         log.write(f"[download_direct] Tentando resume a partir de {resume_from / (1024*1024):.1f} MB\n")
         log.flush()
+    else:
+        headers["Range"] = "bytes=0-"
 
     try:
         response = requests.get(
