@@ -9,6 +9,7 @@ from datetime import datetime
 import psycopg2.extras
 from db import get_connection
 import indexer
+from push import send_web_push, VAPID_PUBLIC_KEY
 import re
 import threading
 import time
@@ -234,6 +235,83 @@ def service_worker():
 @app.route("/manifest.json")
 def pwa_manifest():
     return send_from_directory(os.path.join(app.root_path, "static"), "manifest.json", mimetype="application/manifest+json")
+
+
+# =========================================================
+# ===================== WEB PUSH ==========================
+# =========================================================
+
+@app.route("/api/push/vapid")
+def push_vapid():
+    """Expõe a chave pública VAPID pro frontend assinar."""
+    return {"publicKey": VAPID_PUBLIC_KEY}
+
+
+@app.route("/api/push/subscribe", methods=["POST"])
+@login_required
+def push_subscribe():
+    """Salva (ou faz upsert) a subscription do usuário logado."""
+    data = request.get_json(silent=True) or {}
+    sub = data.get("subscription") or data
+    endpoint = (sub.get("endpoint") or "").strip()
+    keys = sub.get("keys") or {}
+    p256dh = (keys.get("p256dh") or "").strip()
+    auth = (keys.get("auth") or "").strip()
+    if not endpoint or not p256dh or not auth:
+        return {"error": "Subscription inválida"}, 400
+
+    user_id = session.get("user") or "unknown"
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, last_used)
+            VALUES (%s, %s, %s, %s, NOW())
+            ON CONFLICT (endpoint) DO UPDATE
+              SET p256dh = EXCLUDED.p256dh,
+                  auth   = EXCLUDED.auth,
+                  user_id = EXCLUDED.user_id,
+                  last_used = NOW()
+        """, (user_id, endpoint, p256dh, auth))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return {"status": "ok"}
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
+@app.route("/api/push/unsubscribe", methods=["POST"])
+@login_required
+def push_unsubscribe():
+    """Remove a subscription (no logout, ou quando o user desliga notificações)."""
+    data = request.get_json(silent=True) or {}
+    endpoint = (data.get("endpoint") or "").strip()
+    if not endpoint:
+        return {"error": "endpoint obrigatório"}, 400
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM push_subscriptions WHERE endpoint=%s", (endpoint,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return {"status": "ok"}
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
+@app.route("/api/push/test", methods=["POST"])
+@login_required
+def push_test():
+    """Dispara uma notificação de teste pro usuário logado."""
+    user_id = session.get("user") or "unknown"
+    n = send_web_push(user_id, {
+        "title": "🔔 Notificação de teste",
+        "body": "Funcionou! Você vai receber alertas de downloads aqui.",
+        "url": "/downloads",
+    })
+    return {"status": "ok", "sent": n}
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -2072,7 +2150,7 @@ def _refresh_server_file_stats(server_id, filepath):
         conn = get_connection()
         cur = conn.cursor()
         cur.execute(
-            "UPDATE m3u_servers SET linhas=%s, tamanho_bytes=%s, atualizado_em=NOW() WHERE id=%s",
+            "UPDATE m3u_servers SET linhas=%s, tamanho_bytes=%s, atualizado_em=NOW(), reindexado_em=NOW() WHERE id=%s",
             (lines, size, server_id),
         )
         conn.commit()
@@ -2094,10 +2172,10 @@ def listar_m3u_servers():
     try:
         conn = get_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT id, nome, slug, filename, linhas, tamanho_bytes, ativo, atualizado_em, criado_em, source_url FROM m3u_servers ORDER BY id")
+        cur.execute("SELECT id, nome, slug, filename, linhas, tamanho_bytes, ativo, atualizado_em, criado_em, source_url, reindexado_em FROM m3u_servers ORDER BY id")
         rows = cur.fetchall()
         for r in rows:
-            for k in ("atualizado_em", "criado_em"):
+            for k in ("atualizado_em", "criado_em", "reindexado_em"):
                 if r.get(k) and hasattr(r[k], "isoformat"):
                     r[k] = r[k].isoformat()
         cur.close()
@@ -2257,8 +2335,8 @@ def rescan_m3u_server(sid):
         return {"error": f"Falha no download: {e}"}, 500
 
     _refresh_server_file_stats(sid, filepath)
-    indexer.reindex(server_id=sid)
-    return {"status": "ok", "size": size}
+    stats = indexer.reindex(server_id=sid)
+    return {"status": "ok", "size": size, "stats": stats}
 
 
 @app.route("/api/m3u_servers/<int:sid>/toggle", methods=["POST"])
@@ -2307,6 +2385,16 @@ def deletar_m3u_server(sid):
 @admin_required
 def reindex_m3u_server(sid):
     stats = indexer.reindex(server_id=sid)
+    # Bumpa SÓ reindexado_em — o arquivo M3U em si não mudou.
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("UPDATE m3u_servers SET reindexado_em=NOW() WHERE id=%s", (sid,))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"[m3u] erro atualizando reindexado_em do server {sid}: {e}")
     return {"status": "ok", "stats": stats}
 
 

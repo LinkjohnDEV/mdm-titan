@@ -15,3 +15,4 @@ data/series/
 data/filmes/
 data/servers/
 worker.py.pre-resume.bak
+venv/

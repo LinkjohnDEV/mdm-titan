@@ -233,7 +233,8 @@
                     <div class="server-meta">
                         <div>Linhas: <b>${(s.linhas||0).toLocaleString("pt-BR")}</b></div>
                         <div>Tamanho: <b>${fmtBytes(s.tamanho_bytes)}</b></div>
-                        <div class="col-span-2 text-[10px] text-slate-500">Atualizado: ${fmtDate(s.atualizado_em)}</div>
+                        <div class="col-span-2 text-[10px] text-slate-500" title="Quando o arquivo M3U foi atualizado pela última vez (Re-scan ou Atualizar)">📥 Atualizado: ${fmtDate(s.atualizado_em)}</div>
+                        <div class="col-span-2 text-[10px] text-slate-500" title="Quando o índice de busca foi reconstruído pela última vez">🔄 Reindexado: ${fmtDate(s.reindexado_em || s.atualizado_em)}</div>
                         ${urlDisplay}
                     </div>
                     <div class="server-actions">
@@ -242,10 +243,6 @@
                             <i data-lucide="upload" class="w-3 h-3"></i> Atualizar
                         </button>
                         ${rescanBtn}
-                        <button class="btn-mini bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white border border-purple-500/20"
-                            onclick="reindexar(${s.id})">
-                            <i data-lucide="refresh-cw" class="w-3 h-3"></i> Reindexar
-                        </button>
                         <button class="btn-mini ${s.ativo ? 'bg-amber-500/10 text-amber-500 hover:bg-amber-500' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500'} hover:text-white border border-current/20"
                             onclick="toggle(${s.id})">
                             <i data-lucide="${s.ativo ? 'pause' : 'play'}" class="w-3 h-3"></i> ${s.ativo ? 'Pausar' : 'Ativar'}
@@ -390,11 +387,15 @@
             } else {
                 const data = await res.json().catch(() => ({}));
                 const s = data.stats || {};
+                const fmtDelta = d => (d > 0 ? ` (+${d.toLocaleString("pt-BR")} novo${d === 1 ? "" : "s"})`
+                                            : d < 0 ? ` (${d.toLocaleString("pt-BR")})` : "");
                 const parts = [];
-                if (s.filmes != null) parts.push(s.filmes.toLocaleString("pt-BR") + " filmes");
-                if (s.series != null) parts.push(s.series.toLocaleString("pt-BR") + " séries");
+                if (s.filmes != null) parts.push(s.filmes.toLocaleString("pt-BR") + " filmes" + (s.had_previous ? fmtDelta(s.delta_filmes || 0) : ""));
+                if (s.series != null) parts.push(s.series.toLocaleString("pt-BR") + " séries" + (s.had_previous ? fmtDelta(s.delta_series || 0) : ""));
                 if (s.index_time != null) parts.push(s.index_time.toFixed(1) + "s");
-                showToast("✅ Reindexado" + (parts.length ? ": " + parts.join(" · ") : " com sucesso"), "success");
+                const novidade = s.had_previous && ((s.delta_filmes || 0) > 0 || (s.delta_series || 0) > 0);
+                const prefix = novidade ? "🆕 Conteúdo novo" : "✅ Reindexado";
+                showToast(prefix + (parts.length ? ": " + parts.join(" · ") : " com sucesso"), novidade ? "info" : "success");
             }
         } catch (e) {
             showToast("Erro de rede: " + e.message, "error");
@@ -445,7 +446,22 @@
                 try { showToast("Erro: " + (await res.json()).error, "error"); } catch (e) { showToast("Erro HTTP " + res.status, "error"); }
             } else {
                 const data = await res.json().catch(() => ({}));
-                showToast("✅ M3U atualizado" + (data.size ? " (" + fmtBytes(data.size) + ")" : ""), "success");
+                const s = data.stats || {};
+                const df = s.delta_filmes || 0;
+                const ds = s.delta_series || 0;
+                const novidade = s.had_previous && (df > 0 || ds > 0);
+                let msg;
+                if (novidade) {
+                    const partes = [];
+                    if (df > 0) partes.push(`+${df.toLocaleString("pt-BR")} filme${df===1?"":"s"}`);
+                    if (ds > 0) partes.push(`+${ds.toLocaleString("pt-BR")} série${ds===1?"":"s"}`);
+                    msg = "🆕 Conteúdo novo: " + partes.join(" · ");
+                } else if (s.had_previous) {
+                    msg = "✅ M3U atualizado — nada novo desta vez";
+                } else {
+                    msg = "✅ M3U baixado" + (data.size ? " (" + fmtBytes(data.size) + ")" : "");
+                }
+                showToast(msg, novidade ? "info" : "success");
             }
         } catch (e) {
             showToast("Erro de rede: " + e.message, "error");

@@ -252,7 +252,8 @@ def _ensure_index():
 # =========================================================
 
 def reindex(server_id=None):
-    """Força re-indexação. Sem arg = todos. Com server_id = só aquele."""
+    """Força re-indexação. Sem arg = todos (retorna stats globais).
+    Com server_id = só aquele (retorna stats per-server com delta vs estado anterior)."""
     if not _load_servers_cb:
         return _stats
     if server_id is None:
@@ -261,8 +262,24 @@ def reindex(server_id=None):
     servers = [s for s in _load_servers_cb() if s["id"] == server_id]
     if not servers:
         return _stats
+
+    # Snapshot do estado anterior pra calcular delta de novo conteúdo
+    prev_state = _server_state.get(server_id) or {}
+    prev_stats = prev_state.get("stats") or {}
+    prev_filmes = prev_stats.get("filmes", 0)
+    prev_series = prev_stats.get("series", 0)
+    had_previous = bool(prev_state)
+
     _index_one(servers[0])
     _refresh_global_stats()
+
+    state = _server_state.get(server_id)
+    if state and "stats" in state:
+        s = dict(state["stats"])
+        s["delta_filmes"] = s.get("filmes", 0) - prev_filmes
+        s["delta_series"] = s.get("series", 0) - prev_series
+        s["had_previous"] = had_previous
+        return s
     return _stats
 
 

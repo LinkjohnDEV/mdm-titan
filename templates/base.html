@@ -13,8 +13,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="MDM">
-    <link rel="apple-touch-icon" href="/static/icon.svg">
-    <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
+    <link rel="apple-touch-icon" href="/static/favicon.png">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -30,13 +30,17 @@
             transition: transform 0.3s ease-in-out;
         }
 
+        .main-transition {
+            transition: margin-left 0.3s ease-in-out;
+        }
+
         .active-link {
             background: #1e293b;
             border-left: 4px solid #3b82f6;
             color: #eff6ff;
         }
 
-        /* Overlay para o menu mobile */
+        /* Overlay (escurece o conteúdo no mobile quando sidebar tá aberto) */
         #sidebar-overlay {
             opacity: 0;
             pointer-events: none;
@@ -48,37 +52,47 @@
             pointer-events: auto;
         }
 
-        @media (max-width: 767px) {
-            .sidebar-mobile-hidden {
-                transform: translateX(-100%);
-            }
+        /* Estado fechado (vale pra qualquer tela) */
+        #sidebar.is-closed {
+            transform: translateX(-100%);
+        }
 
-            .sidebar-mobile-open {
-                transform: translateX(0);
+        /* Desktop: quando aberto, main "empurrado" pra direita */
+        @media (min-width: 768px) {
+            #main-wrap.sidebar-open {
+                margin-left: 16rem; /* w-64 */
             }
+        }
+
+        /* Scrollbar discreta no nav (Firefox + WebKit) */
+        .nice-scroll {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
+        }
+        .nice-scroll::-webkit-scrollbar { width: 6px; }
+        .nice-scroll::-webkit-scrollbar-track { background: transparent; }
+        .nice-scroll::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.2);
+            border-radius: 3px;
+        }
+        .nice-scroll::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 0.4);
         }
     </style>
 </head>
 
 <body class="text-slate-200 overflow-x-hidden">
 
-    <div id="sidebar-overlay" onclick="toggleSidebar()" class="fixed inset-0 bg-black/60 z-40 md:hidden"></div>
+    <div id="sidebar-overlay" onclick="toggleSidebar()" class="fixed inset-0 bg-black/60 z-40"></div>
 
-    <div class="flex">
-        <aside id="sidebar"
-            class="sidebar-transition fixed inset-y-0 left-0 z-50 w-64 bg-[#0b0f1a] border-r border-slate-800 sidebar-mobile-hidden md:translate-x-0 md:static">
-            <div class="flex flex-col h-full">
-                <div class="p-6 flex items-center justify-between">
-                    <div class="flex items-center gap-3 text-blue-500">
-                        <i data-lucide="shield-half" class="w-8 h-8"></i>
-                        <span class="text-xl font-bold tracking-tight text-white uppercase">MDM TITAN</span>
-                    </div>
-                    <button onclick="toggleSidebar()" class="md:hidden text-slate-400">
-                        <i data-lucide="x" class="w-6 h-6"></i>
-                    </button>
-                </div>
+    <aside id="sidebar"
+        class="sidebar-transition fixed inset-y-0 left-0 z-50 w-64 bg-[#0b0f1a] border-r border-slate-800 is-closed">
+        <div class="flex flex-col h-full">
+            <div class="px-5 py-6 flex items-center justify-center border-b border-slate-800/50">
+                <img src="/static/logoretangulo.png" alt="MDM Titan" class="w-full max-h-24 object-contain">
+            </div>
 
-                <nav class="flex-1 px-4 space-y-1 overflow-y-auto">
+            <nav class="flex-1 px-4 space-y-1 overflow-y-auto py-4 nice-scroll">
                     <p class="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Monitor</p>
                     <a href="/dashboard"
                         class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition-all">
@@ -149,26 +163,27 @@
                     {% endif %}
                 </nav>
 
-                <div class="p-4 border-t border-slate-800">
-                    {% if current_user %}
-                    <div class="px-4 py-2 mb-1">
-                        <p class="text-[10px] text-slate-500 uppercase font-bold">Logado como</p>
-                        <p class="text-sm text-white font-semibold">{{ current_user }}</p>
-                    </div>
-                    {% endif %}
-                    <a href="/logout"
-                        class="flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-500/10 transition-all">
-                        <i data-lucide="log-out" class="w-5 h-5"></i> Sair
-                    </a>
+            <div class="p-4 border-t border-slate-800">
+                {% if current_user %}
+                <div class="px-4 py-2 mb-1">
+                    <p class="text-[10px] text-slate-500 uppercase font-bold">Logado como</p>
+                    <p class="text-sm text-white font-semibold">{{ current_user }}</p>
                 </div>
+                {% endif %}
+                <a href="/logout"
+                    class="flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-500/10 transition-all">
+                    <i data-lucide="log-out" class="w-5 h-5"></i> Sair
+                </a>
             </div>
-        </aside>
+        </div>
+    </aside>
 
-        <main class="flex-1 min-h-screen w-full">
+    <div id="main-wrap" class="main-transition min-h-screen w-full">
+        <main>
             <header
                 class="h-16 border-b border-slate-800 bg-[#0b0f1a]/80 backdrop-blur-md flex items-center justify-between px-4 md:px-8 sticky top-0 z-30">
                 <div class="flex items-center gap-4">
-                    <button onclick="toggleSidebar()" class="md:hidden p-2 bg-blue-600 rounded-lg shadow-lg">
+                    <button onclick="toggleSidebar()" class="p-2 bg-blue-600 rounded-lg shadow-lg hover:bg-blue-500 transition-colors">
                         <i data-lucide="menu" class="w-5 h-5 text-white"></i>
                     </button>
                     <span class="hidden md:block text-sm font-medium text-slate-400 uppercase tracking-widest">MDM
@@ -176,16 +191,17 @@
                 </div>
 
                 <div class="flex items-center gap-3">
-                    <!-- Botão instalar PWA (aparece quando disponível) -->
-                    <button id="pwa-install-btn" onclick="installPWA()"
-                        class="hidden items-center gap-2 bg-blue-600/20 hover:bg-blue-600/40 px-3 py-1.5 rounded-lg border border-blue-500/30 transition-all text-[11px] font-bold text-blue-400 uppercase">
-                        <i data-lucide="download" class="w-3.5 h-3.5"></i>
-                        <span class="hidden sm:inline">Instalar App</span>
+                    <!-- Botão Notificações -->
+                    <button id="mdm-notif-btn" onclick="toggleNotif()"
+                        class="flex items-center gap-2 bg-slate-800/40 hover:bg-slate-700/60 px-3 py-1.5 rounded-lg border border-slate-700/60 transition-all text-[11px] font-bold uppercase text-slate-300"
+                        title="Ativar notificações">
+                        <i data-lucide="bell-off" id="mdm-notif-icon" class="w-3.5 h-3.5"></i>
+                        <span class="hidden sm:inline" id="mdm-notif-label">Notificações</span>
                     </button>
                     <div
                         class="flex items-center gap-2 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
                         <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                        <span class="text-[10px] font-bold text-emerald-500 uppercase">Engine Online</span>
+                        <span class="text-[10px] font-bold text-emerald-500 uppercase">Online</span>
                     </div>
                 </div>
             </header>
@@ -199,14 +215,54 @@
     <script>
         lucide.createIcons();
 
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebar-overlay');
+        // ── Sidebar toggle (qualquer tela) ────────────────────────────────
+        const _sidebar = document.getElementById('sidebar');
+        const _overlay = document.getElementById('sidebar-overlay');
+        const _mainWrap = document.getElementById('main-wrap');
+        const SB_KEY = 'mdm.sidebar.open';
 
-            sidebar.classList.toggle('sidebar-mobile-hidden');
-            sidebar.classList.toggle('sidebar-mobile-open');
-            overlay.classList.toggle('active');
+        function isDesktop() { return window.matchMedia('(min-width: 768px)').matches; }
+
+        function setSidebar(open) {
+            if (open) {
+                _sidebar.classList.remove('is-closed');
+                if (isDesktop()) {
+                    _mainWrap.classList.add('sidebar-open');
+                    _overlay.classList.remove('active');
+                } else {
+                    _overlay.classList.add('active');
+                }
+            } else {
+                _sidebar.classList.add('is-closed');
+                _mainWrap.classList.remove('sidebar-open');
+                _overlay.classList.remove('active');
+            }
+            try { localStorage.setItem(SB_KEY, open ? '1' : '0'); } catch (e) {}
         }
+
+        function toggleSidebar() {
+            setSidebar(_sidebar.classList.contains('is-closed'));
+        }
+
+        // Estado inicial: desktop abre, mobile fecha (a não ser que tenha preferência salva)
+        (function () {
+            let saved = null;
+            try { saved = localStorage.getItem(SB_KEY); } catch (e) {}
+            const open = saved === null ? isDesktop() : saved === '1';
+            setSidebar(open);
+        })();
+
+        // Ao redimensionar, garante que o estado bate com o tipo de tela
+        window.addEventListener('resize', () => {
+            // se ficou em modo mobile e tava aberto, fecha automaticamente o overlay/main
+            if (!_sidebar.classList.contains('is-closed') && !isDesktop()) {
+                _mainWrap.classList.remove('sidebar-open');
+                _overlay.classList.add('active');
+            } else if (!_sidebar.classList.contains('is-closed') && isDesktop()) {
+                _mainWrap.classList.add('sidebar-open');
+                _overlay.classList.remove('active');
+            }
+        });
 
         // Marcar link ativo
         document.querySelectorAll('nav a').forEach(link => {
@@ -216,33 +272,49 @@
             }
         });
 
-        // ── PWA ──────────────────────────────────────────────────────────
-        let _pwaPrompt = null;
-
+        // ── PWA: registra Service Worker ────────────────────────────────
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/sw.js', { scope: '/' })
                 .catch(e => console.warn('SW register failed:', e));
         }
 
-        window.addEventListener('beforeinstallprompt', e => {
-            e.preventDefault();
-            _pwaPrompt = e;
-            const btn = document.getElementById('pwa-install-btn');
-            if (btn) btn.classList.replace('hidden', 'flex');
-        });
-
-        window.addEventListener('appinstalled', () => {
-            _pwaPrompt = null;
-            const btn = document.getElementById('pwa-install-btn');
-            if (btn) btn.classList.replace('flex', 'hidden');
-        });
-
-        function installPWA() {
-            if (!_pwaPrompt) return;
-            _pwaPrompt.prompt();
-            _pwaPrompt.userChoice.then(() => { _pwaPrompt = null; });
+        // ── Botão Notificações ─────────────────────────────────────────
+        async function refreshNotifBtn() {
+            const icon = document.getElementById('mdm-notif-icon');
+            const label = document.getElementById('mdm-notif-label');
+            const btn = document.getElementById('mdm-notif-btn');
+            if (!btn) return;
+            const enabled = window.MDMPush && await window.MDMPush.isEnabled();
+            if (enabled) {
+                btn.classList.add('text-emerald-400'); btn.classList.remove('text-slate-300');
+                if (icon) { icon.setAttribute('data-lucide', 'bell'); }
+                if (label) label.textContent = 'Ativas';
+                btn.title = 'Notificações ativadas (clique pra desativar)';
+            } else {
+                btn.classList.remove('text-emerald-400'); btn.classList.add('text-slate-300');
+                if (icon) { icon.setAttribute('data-lucide', 'bell-off'); }
+                if (label) label.textContent = 'Notificações';
+                btn.title = 'Ativar notificações';
+            }
+            lucide.createIcons();
         }
+        async function toggleNotif() {
+            if (!window.MDMPush) return;
+            const enabled = await window.MDMPush.isEnabled();
+            if (enabled) {
+                if (confirm('Desativar notificações?')) {
+                    await window.MDMPush.disable();
+                }
+            } else {
+                await window.MDMPush.enable();
+            }
+            refreshNotifBtn();
+        }
+        window.addEventListener('load', refreshNotifBtn);
     </script>
+
+    <!-- PWA install banner + push subscription -->
+    <script src="/static/pwa-install.js" defer></script>
 </body>
 
 </html>

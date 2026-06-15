@@ -385,11 +385,40 @@ def _dispatch_whatsapp(hook, message):
     return last_code if any_success else (last_code or 500)
 
 
+def _fire_web_push_from_message(message):
+    """Converte uma mensagem do webhook em payload Web Push e dispara broadcast.
+    Mensagens já vêm formatadas com emoji + título: "✅ Download finalizado: Sintonia T1".
+    Split no primeiro ": " separa título do corpo."""
+    try:
+        from push import send_web_push
+    except Exception as e:
+        print(f"[push] import falhou: {e}")
+        return
+    if not message:
+        return
+    if ": " in message:
+        title, body = message.split(": ", 1)
+    else:
+        title, body = "MDM Titan", message
+    # URL alvo: downloads sempre (atalho útil)
+    try:
+        send_web_push("*", {"title": title, "body": body, "url": "/downloads"})
+    except Exception as e:
+        print(f"[push] disparo falhou: {e}")
+
+
 def send_webhook(message):
     """
     Envia mensagem para todos webhooks ativos.
     Suporta tipos: generic (Discord-like) e whatsapp (Evolution API).
+    Dispara Web Push em paralelo para quem ativou notificações.
     """
+    # Disparar push imediatamente (não bloquear nos webhooks)
+    try:
+        _fire_web_push_from_message(message)
+    except Exception as e:
+        print(f"[push] fire-and-forget erro: {e}")
+
     try:
         conn = get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
