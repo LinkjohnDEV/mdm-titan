@@ -2094,7 +2094,7 @@ def listar_m3u_servers():
     try:
         conn = get_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT id, nome, slug, filename, linhas, tamanho_bytes, ativo, atualizado_em, criado_em FROM m3u_servers ORDER BY id")
+        cur.execute("SELECT id, nome, slug, filename, linhas, tamanho_bytes, ativo, atualizado_em, criado_em, source_url FROM m3u_servers ORDER BY id")
         rows = cur.fetchall()
         for r in rows:
             for k in ("atualizado_em", "criado_em"):
@@ -2110,8 +2110,9 @@ def listar_m3u_servers():
 @app.route("/api/m3u_servers", methods=["POST"])
 @admin_required
 def criar_m3u_server():
-    """Cria um server novo. Recebe multipart: 'nome' + 'file' (.txt/.m3u)."""
+    """Cria um server novo. Recebe multipart: 'nome' + 'file' (.txt/.m3u) + 'source_url' opcional."""
     nome = (request.form.get("nome") or "").strip()
+    source_url = (request.form.get("source_url") or "").strip() or None
     if not nome:
         return {"error": "Nome obrigatório"}, 400
     if "file" not in request.files or request.files["file"].filename == "":
@@ -2139,8 +2140,8 @@ def criar_m3u_server():
             for _ in fh: lines += 1
 
         cur.execute(
-            "INSERT INTO m3u_servers (nome, slug, filename, linhas, tamanho_bytes) VALUES (%s,%s,%s,%s,%s) RETURNING id",
-            (nome, slug, filename_rel, lines, size),
+            "INSERT INTO m3u_servers (nome, slug, filename, linhas, tamanho_bytes, source_url) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
+            (nome, slug, filename_rel, lines, size, source_url),
         )
         new_id = cur.fetchone()[0]
         conn.commit()
@@ -2186,18 +2187,78 @@ def upload_m3u_server(sid):
 def renomear_m3u_server(sid):
     data = request.json or {}
     nome = (data.get("nome") or "").strip()
+    # source_url: "" significa apagar, None significa não mexer
+    source_url_raw = data.get("source_url")
+    has_url_update = "source_url" in data
     if not nome:
         return {"error": "Nome obrigatório"}, 400
     try:
         conn = get_connection()
         cur = conn.cursor()
-        cur.execute("UPDATE m3u_servers SET nome=%s WHERE id=%s", (nome, sid))
+        if has_url_update:
+            new_url = (source_url_raw or "").strip() or None
+            cur.execute("UPDATE m3u_servers SET nome=%s, source_url=%s WHERE id=%s", (nome, new_url, sid))
+        else:
+            cur.execute("UPDATE m3u_servers SET nome=%s WHERE id=%s", (nome, sid))
         conn.commit()
         cur.close()
         conn.close()
         return {"status": "ok"}
     except Exception as e:
         return {"error": str(e)}, 500
+
+
+@app.route("/api/m3u_servers/<int:sid>/rescan", methods=["POST"])
+@admin_required
+def rescan_m3u_server(sid):
+    """Re-baixa o M3U da URL fonte cadastrada, substituindo o arquivo local.
+    Server-side, ignora qualquer limite de upload do proxy."""
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT id, filename, source_url FROM m3u_servers WHERE id=%s", (sid,))
+    server = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not server:
+        return {"error": "Server não encontrado"}, 404
+    url = (server.get("source_url") or "").strip()
+    if not url:
+        return {"error": "Este server não tem URL fonte cadastrada. Edite e adicione a URL primeiro."}, 400
+
+    filepath = os.path.join(BASE_DIR, server["filename"])
+    tmp_path = filepath + ".rescan.part"
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+    try:
+        r = requests.get(url, stream=True, timeout=(15, 300), allow_redirects=True,
+                         headers={"User-Agent": "Mozilla/5.0 MDM-Rescan"})
+        if r.status_code != 200:
+            r.close()
+            return {"error": f"HTTP {r.status_code} ao baixar a URL fonte"}, 502
+        size = 0
+        with open(tmp_path, "wb") as out:
+            for chunk in r.iter_content(chunk_size=65536):
+                if chunk:
+                    out.write(chunk)
+                    size += len(chunk)
+        r.close()
+        if size < 1024:
+            try: os.remove(tmp_path)
+            except Exception: pass
+            return {"error": f"Arquivo baixado é muito pequeno ({size} bytes) — fonte parece quebrada"}, 502
+        os.replace(tmp_path, filepath)
+    except requests.exceptions.Timeout:
+        try: os.remove(tmp_path)
+        except Exception: pass
+        return {"error": "Timeout ao baixar da URL fonte"}, 504
+    except Exception as e:
+        try: os.remove(tmp_path)
+        except Exception: pass
+        return {"error": f"Falha no download: {e}"}, 500
+
+    _refresh_server_file_stats(sid, filepath)
+    indexer.reindex(server_id=sid)
+    return {"status": "ok", "size": size}
 
 
 @app.route("/api/m3u_servers/<int:sid>/toggle", methods=["POST"])

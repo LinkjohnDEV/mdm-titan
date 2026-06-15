@@ -86,6 +86,10 @@
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Nome do servidor</label>
         <input type="text" id="novoNome" placeholder="Ex: Servidor Principal, Backup, Cliente Brpr"
             class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl px-4 py-3 text-white mb-4 focus:ring-2 focus:ring-blue-500 outline-none">
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">URL fonte (opcional)</label>
+        <input type="text" id="novoSourceUrl" placeholder="http://provedor.com/get.php?username=...&type=m3u_plus"
+            class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl px-4 py-3 text-white mb-4 focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+        <p class="text-[10px] text-slate-500 -mt-3 mb-4">Se preencher, fica disponível o botão "Re-scan" pra atualizar direto da fonte.</p>
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Arquivo M3U</label>
         <div id="novoDrop" class="file-drop" onclick="document.getElementById('novoFile').click()">
             <i data-lucide="upload" class="w-10 h-10 text-slate-500 mx-auto mb-2"></i>
@@ -106,6 +110,33 @@
             <button onclick="enviarNovoServer()"
                 class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-5 py-2 rounded-xl flex items-center gap-2">
                 <i data-lucide="check" class="w-4 h-4"></i> Criar
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="modalEditar" class="modal-backdrop hidden">
+    <div class="modal-box">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                <i data-lucide="pencil" class="w-5 h-5 text-blue-400"></i> Editar servidor
+            </h3>
+            <button onclick="fecharEditar()" class="text-slate-400 hover:text-white">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Nome</label>
+        <input type="text" id="editNome"
+            class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl px-4 py-3 text-white mb-4 focus:ring-2 focus:ring-blue-500 outline-none">
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">URL fonte (opcional)</label>
+        <input type="text" id="editSourceUrl" placeholder="http://provedor.com/get.php?username=...&type=m3u_plus"
+            class="w-full bg-[#0b0f1a] border border-slate-700 rounded-xl px-4 py-3 text-white mb-2 focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+        <p class="text-[10px] text-slate-500 mb-4">Deixar vazio remove a URL.</p>
+        <div class="flex justify-end gap-3 mt-5">
+            <button onclick="fecharEditar()" class="px-4 py-2 text-slate-400 hover:text-white">Cancelar</button>
+            <button onclick="salvarEditar()"
+                class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-5 py-2 rounded-xl flex items-center gap-2">
+                <i data-lucide="check" class="w-4 h-4"></i> Salvar
             </button>
         </div>
     </div>
@@ -175,26 +206,42 @@
                 const card = document.createElement("div");
                 card.className = "server-card" + (s.ativo ? "" : " inactive");
                 const safeNome = (s.nome || "").replace(/'/g,"&#39;");
+                const safeUrl = (s.source_url || "").replace(/'/g,"&#39;");
+                const hasUrl = !!s.source_url;
+                const rescanBtn = hasUrl ? `
+                        <button class="btn-mini bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500 hover:text-white border border-cyan-500/20"
+                            onclick="rescan(${s.id}, '${safeNome}')" title="Re-baixar da URL fonte">
+                            <i data-lucide="download-cloud" class="w-3 h-3"></i> Re-scan
+                        </button>` : "";
+                const urlDisplay = hasUrl
+                    ? `<div class="col-span-2 text-[10px] text-cyan-500/80 truncate" title="${safeUrl}">URL fonte: ${s.source_url}</div>`
+                    : `<div class="col-span-2 text-[10px] text-slate-600 italic">Sem URL fonte (edite pra cadastrar)</div>`;
                 card.innerHTML = `
                     <div class="flex items-start justify-between">
-                        <div>
+                        <div class="flex-1 min-w-0">
                             <div class="server-name">
                                 <span class="status-dot ${s.ativo ? 'status-ative' : 'status-paused'}"></span>
                                 ${s.nome}
                             </div>
                             <div class="server-slug">${s.filename}</div>
                         </div>
+                        <button class="text-slate-500 hover:text-white p-1" title="Editar nome / URL fonte"
+                            onclick="abrirEditar(${s.id}, '${safeNome}', '${safeUrl}')">
+                            <i data-lucide="pencil" class="w-4 h-4"></i>
+                        </button>
                     </div>
                     <div class="server-meta">
                         <div>Linhas: <b>${(s.linhas||0).toLocaleString("pt-BR")}</b></div>
                         <div>Tamanho: <b>${fmtBytes(s.tamanho_bytes)}</b></div>
                         <div class="col-span-2 text-[10px] text-slate-500">Atualizado: ${fmtDate(s.atualizado_em)}</div>
+                        ${urlDisplay}
                     </div>
                     <div class="server-actions">
                         <button class="btn-mini bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white border border-blue-500/20"
                             onclick="abrirUpload(${s.id}, '${safeNome}')">
                             <i data-lucide="upload" class="w-3 h-3"></i> Atualizar
                         </button>
+                        ${rescanBtn}
                         <button class="btn-mini bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white border border-purple-500/20"
                             onclick="reindexar(${s.id})">
                             <i data-lucide="refresh-cw" class="w-3 h-3"></i> Reindexar
@@ -220,6 +267,7 @@
     function abrirNovoServer() {
         document.getElementById("modalNovo").classList.remove("hidden");
         document.getElementById("novoNome").value = "";
+        document.getElementById("novoSourceUrl").value = "";
         document.getElementById("novoFile").value = "";
         document.getElementById("novoDropText").textContent = "Clique pra escolher um arquivo .txt ou .m3u";
         document.getElementById("novoDrop").classList.remove("has-file");
@@ -235,11 +283,13 @@
     }
     function enviarNovoServer() {
         const nome = document.getElementById("novoNome").value.trim();
+        const sourceUrl = document.getElementById("novoSourceUrl").value.trim();
         const f = document.getElementById("novoFile").files[0];
         if (!nome) { alert("Informe o nome do servidor."); return; }
         if (!f) { alert("Escolha um arquivo M3U."); return; }
         const fd = new FormData();
         fd.append("nome", nome);
+        if (sourceUrl) fd.append("source_url", sourceUrl);
         fd.append("file", f);
         const xhr = new XMLHttpRequest();
         xhr.open("POST", "/api/m3u_servers");
@@ -311,6 +361,54 @@
     async function reindexar(id) {
         await fetch(`/api/m3u_servers/${id}/reindex`, { method: "POST" });
         carregar();
+    }
+
+    let editTargetId = null;
+    function abrirEditar(id, nome, sourceUrl) {
+        editTargetId = id;
+        document.getElementById("editNome").value = nome;
+        document.getElementById("editSourceUrl").value = sourceUrl || "";
+        document.getElementById("modalEditar").classList.remove("hidden");
+        lucide.createIcons();
+    }
+    function fecharEditar() {
+        document.getElementById("modalEditar").classList.add("hidden");
+        editTargetId = null;
+    }
+    async function salvarEditar() {
+        if (!editTargetId) return;
+        const nome = document.getElementById("editNome").value.trim();
+        const sourceUrl = document.getElementById("editSourceUrl").value.trim();
+        if (!nome) { alert("Nome obrigatório."); return; }
+        const res = await fetch(`/api/m3u_servers/${editTargetId}`, {
+            method: "PUT",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ nome, source_url: sourceUrl })
+        });
+        if (!res.ok) {
+            try { alert("Erro: " + (await res.json()).error); } catch (e) { alert("Erro"); }
+            return;
+        }
+        fecharEditar();
+        carregar();
+    }
+
+    async function rescan(id, nome) {
+        if (!confirm(`Re-baixar M3U da fonte para "${nome}"?\n\nO servidor vai acessar a URL cadastrada e substituir o arquivo atual.`)) return;
+        const btn = event && event.currentTarget;
+        const oldHtml = btn && btn.innerHTML;
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i> Baixando...'; lucide.createIcons(); }
+        try {
+            const res = await fetch(`/api/m3u_servers/${id}/rescan`, { method: "POST" });
+            if (!res.ok) {
+                try { alert("Erro: " + (await res.json()).error); } catch (e) { alert("Erro HTTP " + res.status); }
+            }
+        } catch (e) {
+            alert("Erro de rede: " + e.message);
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = oldHtml; lucide.createIcons(); }
+            carregar();
+        }
     }
     async function toggle(id) {
         await fetch(`/api/m3u_servers/${id}/toggle`, { method: "POST" });
