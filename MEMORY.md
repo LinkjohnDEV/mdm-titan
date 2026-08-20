@@ -4,6 +4,34 @@
 
 ---
 
+## ⚠️ REGRA PERMANENTE — Registrar updates
+
+**Toda vez que entregar algo neste projeto, registrar um update em `/updates`.**
+Sem exceção, sem precisar pedir.
+
+Vale para: correção de bug, funcionalidade nova, mudança de configuração, ajuste de segurança.
+Se mudou algo que outra pessoa notaria, é um update.
+
+**Como registrar:**
+```python
+# Via API (ou direto no banco):
+POST /api/updates
+{
+  "titulo": "Título curto",
+  "descricao": "O quê mudou, por quê e o cuidado tomado.",
+  "area": "feat|fix|security|chore",
+  "prioridade": "media",
+  "status_dev": "planejado"
+}
+# Depois marcar como entregue:
+POST /api/updates/<id>/entregar
+```
+
+**Contrato Star Core:** view `gptsol_updates` no banco MDM expõe 6 campos: `id, titulo, descricao, area, estado, data`.
+Banco: host=DB_HOST, porta=DB_PORT (ver .env). Verificar: `SELECT estado, count(*) FROM gptsol_updates GROUP BY estado;`
+
+---
+
 ## O que é o MDM Titan
 
 **Media Download Manager** — sistema web completo para buscar e baixar filmes, séries, animes e desenhos a partir de uma lista M3U/IPTV (`data/dados.txt`). Interface dark premium com Flask + PostgreSQL.
@@ -388,3 +416,62 @@ Já incluído em: `filmes.html`, `series.html`, `desenhos.html`, `animes.html`, 
 ---
 
 *Atualizado: 2026-05-15*
+
+---
+
+
+---
+
+## 🔒 Scan de seguranca automatico (desde 29/07/2026)
+
+Este brain tem **Semgrep** (bugs/vulns via AST) + **Gitleaks** (secrets no git history).
+
+### Scan automatico
+- **Diario as 05:30** — orquestrado pelo painel StarCoreDC (10.0.1.173)
+- Resultado no painel: **Observabilidade -> aba Seguranca**
+- **Alerta no WhatsApp** so se aparecer achado NOVO
+
+### Prioridades no painel
+| Nivel | Significado | Acao |
+|---|---|---|
+| URGENTE | token de servico (ghp_, sk-, AKIA), .env commitado | rotacionar hoje |
+| ALTO | secret generico em script/doc | rotacionar essa semana |
+| MEDIO | bug de codigo (semgrep warning) | revisar quando der |
+| BAIXO | informativo | opcional |
+
+### Rodar manualmente
+Clique **Rodar scan** no card deste brain no painel — ele ja usa a lista
+completa de excludes e os timeouts certos, e baixa o resultado.
+
+Rodar semgrep na mao em projeto grande costuma travar: sem excluir asset
+(`cache`, `stream`, `backups`, `serverfiles`...) ele varre GB de coisa que
+nao e codigo e estoura o tempo. Se precisar mesmo, o gitleaks e seguro:
+
+```bash
+cd /opt/mdm
+gitleaks detect --source . --report-format json \
+  --report-path /opt/security-scans/gitleaks.json --no-banner
+```
+
+### Falsos positivos
+Use o botao **Ignorar** no painel — ele escreve em `/opt/mdm/.gitleaksignore`
+com o motivo e a data. NUNCA adicione secret real ali; se for real, rotacione.
+
+### Regras deste projeto
+- **Nao commite `.env`** — confira que esta no `.gitignore`
+- **Nao escreva senha em `.md`** — use o Cofre do painel (`/admin/cofre`, AES-256)
+- Se vazar algo: rotacione o secret ANTES de limpar o git history
+- Secret que entrou no git deve ser considerado comprometido, mesmo em repo privado
+
+### Grafo de codigo (Graphify)
+
+Este brain tem **Graphify** — mapa AST do codigo (quem chama quem, o que importa o que).
+
+- Grafo em `/opt/mdm/graphify-out/graph.json`
+- Rebuild **automatico diario as 05:50** pelo painel — so quando codigo muda
+- Consulta no painel: **Observabilidade -> aba Grafos**
+- Rodar manual: `graphify update . --no-cluster`
+  (precisa `export PATH="$HOME/.local/bin:$PATH"`)
+
+Use o grafo pra entender impacto antes de mexer: se for alterar uma funcao,
+olhe quem depende dela antes.

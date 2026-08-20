@@ -7,7 +7,7 @@ from functools import wraps
 import requests
 from datetime import datetime
 import psycopg2.extras
-from db import get_connection
+from db import get_connection as _raw_get_connection
 import indexer
 from push import send_web_push, VAPID_PUBLIC_KEY
 import re
@@ -81,6 +81,30 @@ def inject_user_info():
         "current_user": session.get("user"),
         "current_role": session.get("role", "user")
     }
+
+
+def _current_uid():
+    """Retorna o user_id pra setar em jobs (default admin)."""
+    try:
+        return session.get("user") or "admin"
+    except RuntimeError:
+        # Fora de contexto de request (ex: scheduler thread)
+        return "admin"
+
+
+def get_connection():
+    """Wrapper de db.get_connection que registra o usuário logado na conexão.
+    O trigger BEFORE INSERT em jobs lê current_setting('app.current_user') e
+    preenche user_id automaticamente — assim ranking funciona sem editar
+    todos os INSERT INTO jobs do código."""
+    conn = _raw_get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT set_config('app.current_user', %s, false)", (_current_uid(),))
+        conn.commit()
+    except Exception:
+        pass
+    return conn
 
 # ==============================
 # CONFIGURAÇÕES GERAIS
@@ -521,10 +545,25 @@ def _q_server_id():
 @app.route("/buscar_series")
 def buscar_series():
     termo = request.args.get("q", "").strip()
-    if len(termo) < 2:
+    categoria = request.args.get("categoria", "").strip() or None
+    # Sem termo nem categoria → nada
+    if len(termo) < 2 and not categoria:
         return {"results": []}
-    resultados = indexer.search_series(termo, server_id=_q_server_id())
+    resultados = indexer.search_series(termo, server_id=_q_server_id(), categoria=categoria, limit=200)
     return {"results": resultados}
+
+
+@app.route("/api/m3u_categorias")
+@login_required
+def api_m3u_categorias():
+    """Retorna categorias agrupadas por tipo e server."""
+    tipo = request.args.get("tipo")  # filme | serie | (vazio = tudo)
+    server_id = _q_server_id()
+    try:
+        cats = indexer.list_categorias(tipo=tipo, server_id=server_id)
+        return jsonify(cats)
+    except Exception as e:
+        return {"error": str(e)}, 500
 
 
 @app.route("/add_serie", methods=["POST"])
@@ -668,9 +707,10 @@ def add_serie_completa():
 @app.route("/search_filme")
 def search_filme():
     query = request.args.get("q", "").strip()
-    if len(query) < 2:
+    categoria = request.args.get("categoria", "").strip() or None
+    if len(query) < 2 and not categoria:
         return jsonify([])
-    resultados = indexer.search_filmes(query, server_id=_q_server_id())
+    resultados = indexer.search_filmes(query, server_id=_q_server_id(), categoria=categoria, limit=200)
     return jsonify(resultados)
 
 
@@ -1675,34 +1715,6 @@ def webhooks_page():
     return render_template("webhooks.html")
 
 
-# =========================================================
-# ======================== UPDATES ========================
-# =========================================================
-
-@app.route("/updates")
-@login_required
-def updates_page():
-    return render_template("updates.html")
-
-
-@app.route("/api/updates", methods=["GET"])
-def listar_updates():
-    try:
-        conn = get_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cursor.execute("SELECT id, title, body, created_at FROM updates ORDER BY created_at DESC")
-        rows = cursor.fetchall()
-        for r in rows:
-            if hasattr(r["created_at"], "isoformat"):
-                r["created_at"] = r["created_at"].isoformat()
-        return jsonify(rows)
-    except Exception as e:
-        return {"error": str(e)}, 500
-    finally:
-        if 'cursor' in locals() and cursor: cursor.close()
-        if 'conn' in locals() and conn: conn.close()
-
-
 @app.route("/api/webhooks", methods=["GET"])
 def listar_webhooks():
     try:
@@ -2623,6 +2635,361 @@ def api_qbit_delete(torrent_hash):
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 503
+
+
+# =========================================================
+# ======================= RANKING =========================
+# =========================================================
+
+@app.route("/ranking")
+@admin_required
+def ranking_page():
+    return render_template("ranking.html")
+
+
+@app.route("/api/ranking")
+@admin_required
+def api_ranking():
+    """Ranking de usuários por downloads. Filtros: periodo, tipo, status."""
+    periodo = request.args.get("periodo", "7d")  # hoje | 7d | 30d | tudo
+    tipo = request.args.get("tipo", "")  # filme | serie | (vazio = tudo)
+    status = request.args.get("status", "completed")  # completed | failed | tudo
+
+    where = []
+    params = []
+    intervalos = {
+        "hoje": "1 day",
+        "7d":   "7 days",
+        "30d":  "30 days",
+    }
+    if periodo in intervalos:
+        where.append(f"created_at > NOW() - INTERVAL '{intervalos[periodo]}'")
+    if tipo in ("filme", "serie"):
+        where.append("tipo = %s")
+        params.append(tipo)
+    if status in ("completed", "failed", "queued", "downloading"):
+        where.append("status = %s")
+        params.append(status)
+
+    where_sql = " AND ".join(where) if where else "TRUE"
+
+    sql = f"""
+        SELECT
+          COALESCE(user_id, 'admin') AS user_id,
+          COUNT(*) FILTER (WHERE status = 'completed') AS concluidos,
+          COUNT(*) FILTER (WHERE status = 'failed')    AS falhas,
+          COUNT(*) FILTER (WHERE tipo = 'filme'   AND status='completed') AS filmes,
+          COUNT(*) FILTER (WHERE tipo = 'serie'   AND status='completed') AS series,
+          COALESCE(SUM(episodios_baixados) FILTER (WHERE status='completed'), 0) AS episodios,
+          COALESCE(SUM(tamanho_bytes)     FILTER (WHERE status='completed'), 0) AS bytes,
+          MAX(COALESCE(finished_at, created_at)) AS ultima_atividade
+        FROM jobs
+        WHERE {where_sql}
+        GROUP BY COALESCE(user_id, 'admin')
+        ORDER BY concluidos DESC, bytes DESC
+    """
+    try:
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sql, tuple(params))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        # ISO datetimes pra JSON
+        for r in rows:
+            if r.get("ultima_atividade"):
+                r["ultima_atividade"] = r["ultima_atividade"].isoformat()
+        return jsonify(rows)
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
+# =========================================================
+# ======================== ALERTAS ========================
+# =========================================================
+
+@app.route("/alertas")
+@admin_required
+def alertas_page():
+    return render_template("alertas.html")
+
+
+@app.route("/api/alertas", methods=["GET"])
+@admin_required
+def alertas_list():
+    try:
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT id, nome, titulo, mensagem, url, ativo, tipo, evento_chave,
+                   hora_inicio::text AS hora_inicio,
+                   hora_fim::text    AS hora_fim,
+                   dias_semana, intervalo_minutos,
+                   ultima_execucao, proxima_execucao, criado_em
+            FROM alertas
+            ORDER BY (tipo='evento') DESC, id DESC
+        """)
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+        for r in rows:
+            for k in ("ultima_execucao", "proxima_execucao", "criado_em"):
+                if r.get(k): r[k] = r[k].isoformat()
+        return jsonify(rows)
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
+@app.route("/api/alertas", methods=["POST"])
+@admin_required
+def alertas_create():
+    data = request.get_json(silent=True) or {}
+    nome    = (data.get("nome") or "Alerta").strip()
+    titulo  = (data.get("titulo") or "MDM Titan").strip()
+    msg     = (data.get("mensagem") or "").strip()
+    url     = (data.get("url") or "/downloads").strip()
+    tipo    = (data.get("tipo") or "agendado").strip()
+    ativo   = bool(data.get("ativo", True))
+    h_ini   = data.get("hora_inicio") or None
+    h_fim   = data.get("hora_fim") or None
+    dias    = (data.get("dias_semana") or "1,2,3,4,5,6,7").strip()
+    interv  = int(data.get("intervalo_minutos") or 120)
+    if not msg:
+        return {"error": "Mensagem obrigatória"}, 400
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO alertas (nome, titulo, mensagem, url, tipo, ativo,
+                                 hora_inicio, hora_fim, dias_semana, intervalo_minutos)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id
+        """, (nome, titulo, msg, url, tipo, ativo, h_ini, h_fim, dias, interv))
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close(); conn.close()
+        return {"status": "ok", "id": new_id}
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
+@app.route("/api/alertas/<int:aid>", methods=["PUT"])
+@admin_required
+def alertas_update(aid):
+    data = request.get_json(silent=True) or {}
+    sets = []
+    params = []
+    for col in ("nome","titulo","mensagem","url","tipo","ativo",
+                "hora_inicio","hora_fim","dias_semana","intervalo_minutos"):
+        if col in data:
+            sets.append(f"{col}=%s")
+            v = data[col]
+            if col in ("hora_inicio","hora_fim") and v == "": v = None
+            params.append(v)
+    if not sets:
+        return {"status": "ok"}
+    params.append(aid)
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(f"UPDATE alertas SET {', '.join(sets)} WHERE id=%s", tuple(params))
+        conn.commit()
+        cur.close(); conn.close()
+        return {"status": "ok"}
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
+@app.route("/api/alertas/<int:aid>", methods=["DELETE"])
+@admin_required
+def alertas_delete(aid):
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM alertas WHERE id=%s", (aid,))
+        conn.commit()
+        cur.close(); conn.close()
+        return {"status": "ok"}
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
+@app.route("/api/alertas/<int:aid>/fire", methods=["POST"])
+@admin_required
+def alertas_fire(aid):
+    """Dispara o alerta agora (broadcast push)."""
+    try:
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM alertas WHERE id=%s", (aid,))
+        a = cur.fetchone()
+        if not a:
+            cur.close(); conn.close()
+            return {"error": "Alerta não encontrado"}, 404
+        n = send_web_push("*", {
+            "title": a["titulo"] or "MDM Titan",
+            "body": a["mensagem"],
+            "url": a["url"] or "/downloads",
+        })
+        cur.execute("UPDATE alertas SET ultima_execucao=NOW() WHERE id=%s", (aid,))
+        conn.commit()
+        cur.close(); conn.close()
+        return {"status": "ok", "sent": n}
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
+def _alertas_scheduler():
+    """Thread que roda em background: verifica alertas agendados a cada 60s.
+    Dispara push pra todos quando o horário/intervalo bate."""
+    while True:
+        try:
+            time.sleep(60)
+            conn = _raw_get_connection()
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""
+                SELECT id, titulo, mensagem, url, hora_inicio, hora_fim,
+                       dias_semana, intervalo_minutos, ultima_execucao
+                FROM alertas
+                WHERE ativo=true AND tipo='agendado'
+            """)
+            alertas_ativos = cur.fetchall()
+            now = datetime.now()
+            current_dow = str(now.isoweekday())  # 1=seg .. 7=dom
+            current_time = now.time()
+            for a in alertas_ativos:
+                dias = (a.get("dias_semana") or "").split(",")
+                if current_dow not in dias:
+                    continue
+                h_ini, h_fim = a.get("hora_inicio"), a.get("hora_fim")
+                if h_ini and current_time < h_ini: continue
+                if h_fim and current_time > h_fim: continue
+                interv = int(a.get("intervalo_minutos") or 120)
+                last = a.get("ultima_execucao")
+                if last and (now - last).total_seconds() < interv * 60:
+                    continue
+                # Dispara
+                try:
+                    send_web_push("*", {
+                        "title": a["titulo"] or "MDM Titan",
+                        "body":  a["mensagem"],
+                        "url":   a["url"] or "/downloads",
+                    })
+                    cur.execute("UPDATE alertas SET ultima_execucao=NOW() WHERE id=%s", (a["id"],))
+                    conn.commit()
+                    print(f"[alerta] disparado #{a['id']}: {a['titulo']}")
+                except Exception as e:
+                    print(f"[alerta] erro disparando #{a['id']}: {e}")
+            cur.close()
+            conn.close()
+        except Exception as e:
+            print(f"[alerta] scheduler erro: {e}")
+
+
+threading.Thread(target=_alertas_scheduler, daemon=True).start()
+
+
+# =========================================================
+# ======================= UPDATES =========================
+# =========================================================
+
+@app.route("/updates")
+@login_required
+def updates_page():
+    return render_template("updates.html")
+
+
+@app.route("/api/updates", methods=["GET"])
+@login_required
+def api_updates_list():
+    estado = request.args.get("estado")  # 'entregue' | 'pendente' | None=todos
+    try:
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        if estado:
+            cur.execute(
+                "SELECT * FROM mdm_updates WHERE estado=%s ORDER BY data DESC, hora DESC, id DESC",
+                (estado,)
+            )
+        else:
+            cur.execute("SELECT * FROM mdm_updates ORDER BY data DESC, hora DESC, id DESC")
+        rows = [dict(r) for r in cur.fetchall()]
+        for r in rows:
+            if r.get("data"):
+                r["data"] = r["data"].strftime("%Y-%m-%d")
+            if r.get("hora"):
+                r["hora"] = str(r["hora"])[:5]
+        return jsonify(rows)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if 'cur' in locals(): cur.close()
+        if 'conn' in locals(): conn.close()
+
+
+@app.route("/api/updates", methods=["POST"])
+@login_required
+def api_updates_create():
+    data = request.json or {}
+    titulo = (data.get("titulo") or "").strip()
+    if not titulo:
+        return jsonify({"error": "titulo obrigatório"}), 400
+    descricao  = (data.get("descricao") or "").strip()
+    area       = (data.get("area") or "feat").strip()
+    prioridade = (data.get("prioridade") or "media").strip()
+    status_dev = (data.get("status_dev") or "planejado").strip()
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO mdm_updates (titulo, descricao, area, estado, prioridade, status_dev) VALUES (%s,%s,%s,'pendente',%s,%s) RETURNING id",
+            (titulo, descricao, area, prioridade, status_dev)
+        )
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        return jsonify({"id": new_id})
+    except Exception as e:
+        if 'conn' in locals(): conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if 'cur' in locals(): cur.close()
+        if 'conn' in locals(): conn.close()
+
+
+@app.route("/api/updates/<int:uid>/entregar", methods=["POST"])
+@login_required
+def api_updates_entregar(uid):
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE mdm_updates SET estado='entregue', data=CURRENT_DATE, hora=CURRENT_TIME WHERE id=%s",
+            (uid,)
+        )
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        if 'conn' in locals(): conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if 'cur' in locals(): cur.close()
+        if 'conn' in locals(): conn.close()
+
+
+@app.route("/api/updates/<int:uid>", methods=["DELETE"])
+@login_required
+def api_updates_delete(uid):
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM mdm_updates WHERE id=%s", (uid,))
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        if 'conn' in locals(): conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if 'cur' in locals(): cur.close()
+        if 'conn' in locals(): conn.close()
 
 
 if __name__ == "__main__":
